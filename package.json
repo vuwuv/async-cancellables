@@ -1,0 +1,31 @@
+{
+    "name": "async-cancellables",
+    "version": "1.0.0-alpha",
+    "description": "Helper classes for async/await",
+    "main": "index.js",
+    "type": "module",
+    "scripts": {
+        "test": "NODE_OPTIONS=--experimental-vm-modules jest"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/vuwuv/async-cancellables.git"
+    },
+    "keywords": [
+        "async",
+	"cancellable",
+        "AsyncState",
+        "AsyncLock",
+        "CancellationToken",
+        "sleep"
+    ],
+    "author": "vuwuv",
+    "license": "MIT",
+    "bugs": {
+        "url": "https://github.com/vuwuv/async-cancellables/issues"
+    },
+    "homepage": "https://github.com/vuwuv/async-cancellables#readme",
+    "devDependencies": {
+        "jest": "^29.3.1"
+    }
+}
