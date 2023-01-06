@@ -58,7 +58,7 @@ describe('AsyncState', () => {
             timeout = setTimeout(() => emitter.emit('test', 1, 1), 20);
         }
         
-        promises = [state.wait(), state.waitEmpty(), state.wait(token), state.waitEmpty(token)];
+        promises = [state.wait(), state.waitEmpty(), CancellationToken.catchCancelError(state.wait(token)), CancellationToken.catchCancelError(state.waitEmpty(token))];
         results = await checkPromises(promises);
         expect(results).toEqual([symbol, undefined, symbol, undefined]);
 
@@ -67,7 +67,7 @@ describe('AsyncState', () => {
         results = await checkPromises(promises);
         expect(results).toEqual(cancel ? [2, undefined, token, undefined] : [2, undefined, 2, undefined]);
 
-        promises = [state.wait(), state.waitEmpty(), state.wait(token), state.waitEmpty(token)];
+        promises = [state.wait(), state.waitEmpty(), CancellationToken.catchCancelError(state.wait(token)), CancellationToken.catchCancelError(state.waitEmpty(token))];
         results = await checkPromises(promises);
         expect(results).toEqual(cancel ? [2, symbol, 2, token] : [2, symbol, 2, symbol]);
 
@@ -75,7 +75,7 @@ describe('AsyncState', () => {
 
         timeout = setTimeout(() => state.clear(), 20);
 
-        promises = [state.wait(), state.waitEmpty(), state.wait(token), state.waitEmpty(token)];
+        promises = [state.wait(), state.waitEmpty(), CancellationToken.catchCancelError(state.wait(token)), CancellationToken.catchCancelError(state.waitEmpty(token))];
         results = await checkPromises(promises);
         expect(results).toEqual(cancel ? [2, symbol, 2, symbol] : [2, symbol, 2, symbol]);
 
@@ -84,15 +84,15 @@ describe('AsyncState', () => {
         results = await checkPromises(promises);
         expect(results).toEqual(cancel ? [2, undefined, 2, token] : [2, undefined, 2, undefined]);
 
-        promises = [state.wait(), state.waitEmpty(), state.wait(token), state.waitEmpty(token)];
+        promises = [state.wait(), state.waitEmpty(), CancellationToken.catchCancelError(state.wait(token)), CancellationToken.catchCancelError(state.waitEmpty(token))];
         results = await checkPromises(promises);
         expect(results).toEqual(cancel ? [symbol, undefined, token, undefined] : [symbol, undefined, symbol, undefined]);
 
         if (cancel) {
-            token = CancellationToken.timeout(10).enableThrow();
+            token = CancellationToken.timeout(10);
             await expect(state.wait(token)).rejects.toThrow();
             state.set(true);
-            token = CancellationToken.timeout(10).enableThrow();
+            token = CancellationToken.timeout(10);
             await expect(state.waitEmpty(token)).rejects.toThrow();
             state.clear();
             await expect(state.wait(token)).rejects.toThrow();

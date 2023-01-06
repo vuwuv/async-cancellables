@@ -9,7 +9,9 @@
   - [Table of contents](#table-of-contents)
   - [Installation](#installation)
   - [API](#api)
-
+  - [Versioning](#versioning)
+  - [Authors](#authors)
+  - [License](#license)
 
 ## Prerequisites
 
@@ -46,7 +48,7 @@ async function downloadItems(cancellationToken, itemListUrl) {
     return items;
 }
 
-const items = await downloadItems(CancellationToken.timeout(5000).enableThrow(), url);
+const items = await downloadItems(CancellationToken.timeout(5000), url);
 ```
 
 #### Creating tokens
@@ -71,44 +73,52 @@ const timeoutToken - CancellationToken.timeout(5000);
 const eventToken - timeoutToken.event(target, 'event');
 ```
 
-When token cancels by default token wait methods immediately return the token in the token chain that cancelled. This behaviour can be overridden by calling `enableThrow()` which enables throwing error on token cancel for this token and all the descending tokens.
-
-```js
-const throwingTimeoutToken - CancellationToken.timeout(5000).enableThrow();
-const throwingEventToken - throwingTimeoutToken.event(target, 'event');
-
-await throwingEventToken.wait(asyncTask()); // will throw if any of these tokens cancels
-```
-
 #### Wait methods
 
-Token has several asynchronous wait methods. Each of them returns when token cancels or method task is done. Method can also throw on cancel if the corresponding option is used.
+Token has several asynchronous wait methods. Each of them returns when token cancels or method task is done. Method can also throw on cancel if the corresponding option is used. `doNotThrow` parameter is optional, if it is `true` method returns token that cancelled  instead of throwing error.
 
-- `wait(promise)` waits for the promise to resolve and returns promise result if does not cancel.
-- `waitEvent(target, eventName)` waits for the `eventName` on the `target` to fire and returns the array of event arguments if does not cancel.
-- `handleEvent(target, eventName, handler)` waits for the `eventName` on the `target` to fire and returns the result of the `handler` function called with the array of event arguments if does not cancel.
-- `sleep(ms, successValue)` waits for the specified amount of milliseconds to pass and returns `successValue` if does not cancel.
+- `wait(promise, doNotThrow = false)` waits for the promise to resolve and returns promise result if does not cancel
+- `waitEvent(target, eventName, doNotThrow = false)` waits for the `eventName` on the `target` to fire and returns the array of event arguments if does not cancel
+- `handleEvent(target, eventName, handler, doNotThrow = false)` waits for the `eventName` on the `target` to fire and returns the result of the `handler` function called with the array of event arguments if does not cancel
+- `sleep(ms, successValue, doNotThrow = false)` waits for the specified amount of milliseconds to pass and returns `successValue` if does not cancel
+
+#### Static wait methods
+
+CancellationToken token has the same static wait methods, except they have additional first parameter `cancellationToken` which can be `null` or CancellationToken instance. If it is null wait is executed without cancellation.
+
+- `CancellationToken.wait(cancellationToken, promise, doNotThrow = false)`
+- `CancellationToken.waitEvent(cancellationToken, target, eventName, doNotThrow = false)`
+- `CancellationToken.handleEvent(cancellationToken, target, eventName, handler, doNotThrow = false)`
+- `CancellationToken.sleep(cancellationToken, ms, successValue, doNotThrow = false)`
 
 #### Cancel methods
 
-- `cancel()` cancels any (not only manual) token immediately
+- `cancel()` cancels any (not just manual) token immediately
 
-#### Accessing token properties
+#### Properties
 
-- `isManual` if token is manual
-- `isTimeout` if token is timeout
-- `isEvent` if token is event
-- `isCancellationToken` returns `true`
+- `cancelled` returns `true` if token is cancelled
+- `isManual` returns `true` if token has `manual` type
+- `isTimeout` returns `true` if token has `timeout` type
+- `isEvent` returns `true` if token has `event` type
+- `isCancellationToken` always returns `true`
 
-#### Accessing utility properties and methods
+#### Utility properties and methods
 
 - `isToken(object)` checks if the object is a cancellation token
-- `cancelledBy` if cancelled returns token that cancelled or throws an error if throw is enabled
-- `cancelledByControlled(overrideThrow = null)` same as above, but with override of throw behavior
+- `cancelledBy` if cancelled returns token that cancelled, `null` otherwise
+- `throwIfCancelled()` if cancelled throws cancel error
+- `catchCancelError(promise)` awaits the promise and returns it's result, if cancel error is thrown returns cancelled token, rethrows any other error
+- `processCancel(resolve, reject, cancel, doNotThrow = false)` when token is cancelled calls `cancel` and then `resolve` or `reject` depending on `doNotThrow` value
+
+#### Static utility methods
+
+- `CancellationToken.isToken(object)` same as non-static method
+- `CancellationToken.catchCancelError(promise)` same as non-static method
 
 #### Events
 
-- `cancel` fires on token cancels and gets cancelled token as n argument
+- `cancel` fires on token cancel and gets cancelled token as an argument
 
 ### AsyncLock
 
@@ -138,7 +148,7 @@ const files = await Promise.all(urls.map(url => downloadFile(lock, url)));
 #### Waiting slots
 
 There are several wait methods:
-- `wait(slotCount = 1, priority = 0, cancellationToken = null)` is the most general one, allows to specify all parameters.
+- `wait(slotCount = 1, priority = 0, cancellationToken = null)` is the most general one, allows to specify all parameters
 - `waitSimple(slotCount = 1, cancellationToken = null)` does not require priority option
 - `waitOne(cancellationToken = null)` uses slotCount
 

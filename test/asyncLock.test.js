@@ -162,8 +162,8 @@ describe('AsyncValue', () => {
 
         promises = [
             callFor(asyncLock, asyncLock.waitOne(), 100),
-            callFor(asyncLock, asyncLock.waitOne(token1), 20),
-            callFor(asyncLock, asyncLock.waitOne(token2), 60),
+            callFor(asyncLock, CancellationToken.catchCancelError(asyncLock.waitOne(token1)), 20),
+            callFor(asyncLock, CancellationToken.catchCancelError(asyncLock.waitOne(token2)), 60),
             callFor(asyncLock, asyncLock.waitOne(), 20),
         ];
 
@@ -192,7 +192,7 @@ describe('AsyncValue', () => {
         expect(asyncLock.availableSlots).toBe(1);
 
         callFor(asyncLock, asyncLock.waitOne(), 70);
-        await expect(async () => asyncLock.waitOne(CancellationToken.timeout(20).enableThrow())).rejects.toThrow();
-        await expect(async () => asyncLock.wait(1, 0, CancellationToken.timeout(20).enableThrow())).rejects.toThrow();
+        await expect(async () => asyncLock.waitOne(CancellationToken.timeout(20))).rejects.toThrow();
+        await expect(async () => asyncLock.wait(1, 0, CancellationToken.timeout(20))).rejects.toThrow();
     });
 });
