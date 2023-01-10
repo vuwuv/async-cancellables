@@ -15,7 +15,7 @@
 
 ## Prerequisites
 
-This project requires NodeJS (version 8 or later) and NPM.
+This project requires NodeJS (version 18 or later) and NPM.
 
 ## Installation
 
@@ -37,9 +37,11 @@ Functions:
 
 ### CancellationToken
 
-Different token types to simplify cancellation of asynchronous calls
+Different token types for simplifying cancellation of asynchronous calls
 
 ```js
+import { CancellationToken } from 'async-cancellables';
+
 async function downloadItems(cancellationToken, itemListUrl) {
     const itemsPage = await cancellationToken.wait(getPage(itemListUrl));
     const items = [];
@@ -51,27 +53,37 @@ async function downloadItems(cancellationToken, itemListUrl) {
 const items = await downloadItems(CancellationToken.timeout(5000), url);
 ```
 
+#### Using CT as CancellationToken shortcut
+
+```js
+import { CT } from 'async-cancellables';
+const ct = CT.manual();
+```
+
 #### Creating tokens
 
 There are 3 types of cancellation tokens:
 - `manual` token can be cancelled only manually
 - `timeout` token cancels after specified amount of time passes
-- `event` token cancels after specified event on target object is fired
+- `event` token cancels after specified event on target object is fired, can safely listen to persistent objects as it listens using weak reference
 
-```js
-import { CancellationToken } from 'async-cancellables';
+They can be created using static methods:
+- `CancellationToken.manual(parents = null)` creates a `manual` token with optional list of parents which can contain `null` or duplicate values that are ignored for convenience reasons
+- `CancellationToken.timeout(ms, parents = null)` creates a `timeout` token which cancels after `ms` milliseconds elapse
+- `CancellationToken.event(target, eventName, parents = null)` create an `event` token which cancels after `eventName` event on `target` emitter fires
 
-const manualToken = CancellationToken.manual(cancelled = false);
-const timeoutToken = CancellationToken.timeout(ms);
-const eventToken = CancellationToken.event(target, eventName);
-```
+or by creating direct children for any token instance (same parameters apply):
+- `token.manual(parents = null)`
+- `token.timeout(ms, parents = null)`
+- `token.event(target, eventName, parents = null)`
 
-Tokens can be chained by creating child tokens. Every token in a chain is also cancelled when any of it's parents cancels. In the example below `eventToken` cancels either when `5000` milliseconds pass or `target` fires `'event'` event.
+You can also assign additional parents to existing tokens via `attachTo` method
+- `token.attachTo(...parents)` method ignore duplicate and `null` parents and returns `this`
 
-```js
-const timeoutToken - CancellationToken.timeout(5000);
-const eventToken - timeoutToken.event(target, 'event');
-```
+Token is also cancelled when any of it's direct or indirect parents cancels. If a token chain is attached to a cancelled parent the whole chain immediately cancels.
+
+
+Tokens can be cancelled ONLY ONCE!
 
 #### Wait methods
 
@@ -84,7 +96,7 @@ Token has several asynchronous wait methods. Each of them returns when token can
 
 #### Static wait methods
 
-CancellationToken token has the same static wait methods, except they have additional first parameter `cancellationToken` which can be `null` or CancellationToken instance. If it is null wait is executed without cancellation.
+CancellationToken token has the same static wait methods, except they have additional first parameter `cancellationToken` which can be `null` or CancellationToken instance. If it is `null` wait method is executed without any cancellation.
 
 - `CancellationToken.wait(cancellationToken, promise, doNotThrow = false)`
 - `CancellationToken.waitEvent(cancellationToken, target, eventName, doNotThrow = false)`
@@ -93,7 +105,7 @@ CancellationToken token has the same static wait methods, except they have addit
 
 #### Cancel methods
 
-- `cancel()` cancels any (not just manual) token immediately
+- `cancel()` cancels any (not just manual) token immediately and returns `this`
 
 #### Properties
 
@@ -115,6 +127,26 @@ CancellationToken token has the same static wait methods, except they have addit
 
 - `CancellationToken.isToken(object)` same as non-static method
 - `CancellationToken.catchCancelError(promise)` same as non-static method
+
+#### Race methods
+
+Both methods require generator function `promiseListGenerator(token)`: it should use `token` to create async calls and return promise list
+
+`race(promiseListGenerator, doNotThrow = false)` uses `promiseListGenerator` to get promise list, waits for any promise to resolve/reject or current token to cancel, then cancels `token` (which is direct descendant of the current token) to stop execution of the rest of the async calls
+
+All possible execution scenarios depeding on `doNotThrow` value, async calls results and current token state:
+- `doNotThrow` is `false` and current token cancels before any of the promises resolves or rejects - `CancellationEventError` is thrown
+- `doNotThrow` is `true` and current token cancels before any of the promises resolves or rejects - cancelled token is returned
+- one of the promises resolves before any other events - `RaceResult` object is returned containing `index` and `result` of the resolved promise
+- one of the promises rejects before any other events - `RaceError` is thrown containing `index` and `result` of the rejected promise
+
+`any(promiseListGenerator, doNotThrow = false)` uses `promiseListGenerator` to get promise list, waits for any promise to resolve, all promises to reject or current token to cancel, then cancels `token` (which is direct descendant of the current token) to stop execution of the rest of the async calls
+
+All possible execution scenarios depeding on `doNotThrow` value, async calls results and current token state:
+- `doNotThrow` is `false` and current token cancels before any of the promises resolves or rejects - `CancellationEventError` is thrown
+- `doNotThrow` is `true` and current token cancels before any of the promises resolves or rejects - cancelled token is returned
+- one of the promises resolves before current token cancellation - `RaceResult` object is returned containing `index` and `result` of the resolved promise
+- all the promises reject before current token cancellation - `AggregateError` is thrown containing error list
 
 #### Events
 

@@ -1,6 +1,6 @@
 import EventEmitter from 'events';
 
-import { CancellationToken } from '../index.js';
+import { CancellationToken, CT } from '../index.js';
 
 async function delay(ms, param) {
     return new Promise((resolve, reject) => setTimeout(() => resolve(param), ms));
@@ -58,45 +58,155 @@ function setNames(list) {
 const events = new Events('test');
 
 describe('CancellationToken', () => {
-    it.each([['timeout'], ['manual'], ['event']])('%p token does not cancel', async (name) => {
+    it.each([['timeout'], ['manual'], ['event']])('CT case token %p', async (name) => {
         events.clear();
-        const timeout = 25;
+        const timeout = 7;
         let token =
-            name === 'timeout'
-                ? CancellationToken.timeout(timeout)
-                : name === 'manual'
-                ? CancellationToken.manual(false)
-                : CancellationToken.event(events, 'test');
+            name === 'timeout' ? CT.timeout(timeout) : name === 'manual' ? CT.manual() : CT.event(events, 'test');
         events.timer(timeout);
         if (name === 'manual') setTimeout(() => token.cancel(), timeout);
-        await expect(token.wait(delay(15, true))).resolves.toBe(true);
+        await expect(token.wait(delay(15))).rejects.toThrow();
+        expect(token instanceof CT).toBe(true);
     });
 
-    it.each([['timeout'], ['manual'], ['event']])('%p token cancels', async (name) => {
+    it.each([['timeout'], ['manual'], ['event']])('no cancel case token %p', async (name) => {
         events.clear();
-        const timeout = 25;
+        const timeout = 15;
         let token =
-            name === 'timeout'
-                ? CancellationToken.timeout(timeout)
-                : name === 'manual'
-                ? CancellationToken.manual(false)
-                : CancellationToken.event(events, 'test');
+            name === 'timeout' ? CancellationToken.timeout(timeout) : name === 'manual' ? CancellationToken.manual() : CancellationToken.event(events, 'test');
         events.timer(timeout);
         if (name === 'manual') setTimeout(() => token.cancel(), timeout);
-        await expect(token.wait(delay(30))).rejects.toThrow();
+        await expect(token.wait(delay(7, true))).resolves.toBe(true);
+    });
+
+    it.each([['timeout'], ['manual'], ['event']])('cancel case token %p', async (name) => {
+        events.clear();
+        const timeout = 7;
+        let token =
+            name === 'timeout' ? CancellationToken.timeout(timeout) : name === 'manual' ? CancellationToken.manual() : CancellationToken.event(events, 'test');
+        events.timer(timeout);
+        if (name === 'manual') setTimeout(() => token.cancel(), timeout);
+        await expect(token.wait(delay(15))).rejects.toThrow();
     });
 
     it.each([['timeout'], ['manual'], ['event']])('target promise rejected %p token', async (name) => {
         events.clear();
         const timeout = 30;
         let token =
-            name === 'timeout'
-                ? CancellationToken.timeout(timeout)
-                : name === 'manual'
-                ? CancellationToken.manual(false)
-                : CancellationToken.event(events, 'test');
+            name === 'timeout' ? CancellationToken.timeout(timeout) : name === 'manual' ? CancellationToken.manual() : CancellationToken.event(events, 'test');
         events.timer(timeout);
         await expect(token.wait(delayError(15, 'error message'))).rejects.toThrow('error message');
+    });
+
+    it.each([['addOnce'], ['addMulti'], ['init'], ['childInit']])('multiparent %p token', async (name) => {
+        const create = function(...tokens) {
+            let child;
+
+            if (name === 'addOnce') {
+                tokens = tokens.concat(...tokens.slice(tokens.length < 2 ? 0 : tokens.length === 2 ? 1 : 2));
+                child = CancellationToken.manual().attachTo(...tokens);
+            }
+            else if (name === 'addMulti') {
+                child = CancellationToken.manual();
+                for (let i = 0; i < tokens.length - 1; i++) child = child.attachTo(tokens[i], tokens[i+1]);    
+            }
+            else if (name === 'init') {
+                tokens = tokens.concat(...tokens.slice(tokens.length < 2 ? 0 : tokens.length === 2 ? 1 : 2));
+                child = CancellationToken.manual(tokens);
+            }
+            else if (name === 'childInit') {
+                tokens = tokens.concat(...tokens.slice(tokens.length < 2 ? 0 : tokens.length === 2 ? 1 : 2));
+                if (tokens.length) child = tokens[0].manual(tokens.slice(1));
+                else child = CancellationToken.manual(tokens);
+            }
+            
+            return child;
+        };
+
+        let parent1 = CancellationToken.manual(), parent2 = CancellationToken.manual(), parent3 = CancellationToken.manual();
+        let child = create(parent1, parent2, parent3);
+        expect(child.cancelled).toBe(false);
+        parent1.cancel();       
+        expect(child.cancelled).toBe(true);
+        expect(child.cancelledBy).toBe(parent1);
+
+        parent1 = CancellationToken.manual(), parent2 = CancellationToken.manual(), parent3 = CancellationToken.manual();
+        child = create(parent1, parent2, parent3);
+        parent2.cancel();       
+        expect(child.cancelled).toBe(true);
+        expect(child.cancelledBy).toBe(parent2);
+
+        parent1 = CancellationToken.manual(), parent2 = CancellationToken.manual(), parent3 = CancellationToken.manual();
+        child = create(parent1, parent2, parent3);
+        parent3.cancel();       
+        expect(child.cancelled).toBe(true);
+        expect(child.cancelledBy).toBe(parent3);
+
+        parent1 = CancellationToken.manual(), parent2 = CancellationToken.manual(), parent3 = CancellationToken.manual();
+        child = create(parent1, parent2, parent3, null);
+        parent1.cancel();       
+        expect(child.cancelled).toBe(true);
+        expect(child.cancelledBy).toBe(parent1);
+
+        parent1 = CancellationToken.manual(), parent2 = CancellationToken.manual(), parent3 = CancellationToken.manual();
+        child = create(parent1, parent2, parent3, null);
+        parent2.cancel();       
+        expect(child.cancelled).toBe(true);
+        expect(child.cancelledBy).toBe(parent2);
+
+        parent1 = CancellationToken.manual(), parent2 = CancellationToken.manual(), parent3 = CancellationToken.manual();
+        child = create(parent1, parent2, parent3, null);
+        parent3.cancel();       
+        expect(child.cancelled).toBe(true);
+        expect(child.cancelledBy).toBe(parent3);
+
+        expect(() => create(parent1, 'test', parent3, undefined, null)).toThrow();
+        expect(() => create(parent1, false, parent3, undefined, null)).toThrow();
+        expect(() => create(parent1, 0, parent3, undefined, null)).toThrow();
+        expect(() => create(parent1, undefined, parent3, undefined, null)).toThrow();
+
+        parent1 = CancellationToken.manual(), parent2 = CancellationToken.manual().cancel(), parent3 = CancellationToken.manual();
+        child = create(parent1, parent2, parent3);
+        expect(child.cancelled).toBe(true);
+        expect(child.cancelledBy).toBe(parent2);
+
+        parent1 = CancellationToken.manual(), parent2 = CancellationToken.manual().cancel(), parent3 = CancellationToken.manual().cancel();
+        child = create(parent1, parent2, parent3);
+        expect(child.cancelled).toBe(true);
+        expect(child.cancelledBy).toBe(parent2);
+
+        parent1 = CancellationToken.manual().cancel(), parent2 = CancellationToken.manual().cancel(), parent3 = CancellationToken.manual();
+        child = create(parent1, parent2, parent3);
+        expect(child.cancelled).toBe(true);
+        expect(child.cancelledBy).toBe(parent1);
+
+        child = create();
+        expect(child.cancelled).toBe(false);
+
+        parent1 = CancellationToken.manual().cancel();
+        parent2 = CancellationToken.manual();
+        parent3 = parent2.manual();
+        expect(parent2.cancelled).toBe(false);
+        expect(parent3.cancelled).toBe(false);
+        parent2.attachTo(parent1);
+        expect(parent2.cancelled).toBe(true);
+        expect(parent3.cancelled).toBe(true);
+        expect(parent2.cancelledBy).toBe(parent1);
+        expect(parent3.cancelledBy).toBe(parent1);
+
+        let counter = 0;
+        parent3 = CancellationToken.manual();
+        parent3.on('cancel', () => counter += 1);
+        parent3.cancel();
+        expect(counter).toBe(1);
+        parent3.cancel();
+        expect(counter).toBe(1);
+        parent2 = CancellationToken.manual().cancel();
+        parent3.attachTo(parent2);
+        expect(counter).toBe(1);
+        parent1 = CancellationToken.manual().cancel();
+        parent2.attachTo(parent1);
+        expect(counter).toBe(1);
     });
 
     it('catch cancel error', async () => {
@@ -110,11 +220,7 @@ describe('CancellationToken', () => {
         events.clear();
         const timeout = 200;
         let token =
-            name === 'timeout'
-                ? CancellationToken.timeout(timeout)
-                : name === 'manual'
-                ? CancellationToken.manual(false)
-                : CancellationToken.event(events, 'test');
+            name === 'timeout' ? CancellationToken.timeout(timeout) : name === 'manual' ? CancellationToken.manual() : CancellationToken.event(events, 'test');
         events.timer(timeout);
         let wait, result;
         wait = token.waitEvent(events, 'event');
@@ -137,7 +243,7 @@ describe('CancellationToken', () => {
                     tokenType === 'timeout'
                         ? CancellationToken.timeout(timeout)
                         : tokenType === 'manual'
-                        ? CancellationToken.manual(false)
+                        ? CancellationToken.manual()
                         : CancellationToken.event(events, 'test');
 
                 if (cancelled) token.cancel();
@@ -181,8 +287,10 @@ describe('CancellationToken', () => {
                     tokenType === 'timeout'
                         ? CancellationToken.timeout(timeout)
                         : tokenType === 'manual'
-                        ? CancellationToken.manual(false)
-                        : tokenType === 'event' ? CancellationToken.event(events, 'test') : null;
+                        ? CancellationToken.manual()
+                        : tokenType === 'event'
+                        ? CancellationToken.event(events, 'test')
+                        : null;
 
                 if (token) {
                     events.timer(timeout);
@@ -212,59 +320,13 @@ describe('CancellationToken', () => {
             };
 
             await expect(fn(true, false)).resolves.toBe(2);
-            if (tokenType === "null") await expect(fn(true, true)).resolves.toBe(2);
+            if (tokenType === 'null') await expect(fn(true, true)).resolves.toBe(2);
             else await expect(fn(true, true)).resolves.toBeInstanceOf(CancellationToken);
             await expect(fn(false, false)).resolves.toBe(2);
-            if (tokenType === "null") await expect(fn(true, true)).resolves.toBe(2);
-            else await expect(fn(false, true)).rejects.toThrow();;
+            if (tokenType === 'null') await expect(fn(true, true)).resolves.toBe(2);
+            else await expect(fn(false, true)).rejects.toThrow();
         }
     );
-
-    it('pause/resume basics', async () => {
-        let token1, token2, token3;
-        token1 = CancellationToken.timeout(15).allowPause();
-        token2 = token1.manual();
-        token3 = token2.timeout(15);
-
-        token3.pause();
-        await delay(20);
-        token3.resume();
-
-        await expect(token3.catchCancelError(token3.sleep(10, true))).resolves.toBe(true);
-    });
-
-    it.each([['timeout'], ['manual'], ['event']])('pause/resume %p token', async (name) => {
-        events.clear();
-        const timeout = 100;
-        let token =
-            name === 'timeout'
-                ? CancellationToken.timeout(timeout)
-                : name === 'manual'
-                ? CancellationToken.manual(false)
-                : CancellationToken.event(events, 'test');
-        token.allowPause();
-        events.timer(timeout);
-        let trackedPause = false,
-            trackedResume = false;
-        const trackPause = () => (trackedPause = true);
-        const trackResume = () => (trackedResume = true);
-        token.on('pause', trackPause);
-        token.on('resume', trackResume);
-        token.pause();
-        expect(trackedPause).toBe(true);
-        expect(trackedResume).toBe(false);
-        trackedPause = false;
-        token.resume();
-        expect(trackedPause).toBe(false);
-        expect(trackedResume).toBe(true);
-        trackedResume = false;
-        token.off('pause', trackPause);
-        token.off('resume', trackResume);
-        token.pause();
-        token.resume();
-        expect(trackedPause).toBe(false);
-        expect(trackedResume).toBe(false);
-    });
 
     it('token chain', async () => {
         let token1, token2, token3, result, promise;
@@ -290,127 +352,43 @@ describe('CancellationToken', () => {
         expect(() => token3.throwIfCancelled()).toThrow();
     });
 
-    it('token chain pause and wait', async () => {
-        let token1, token2, token3, token4, result, promise1, promise2;
-
-        token1 = CancellationToken.timeout(150).allowPause();
-        token2 = token1.manual();
-        token3 = token2.manual();
-        token4 = token1.timeout(150);
-
-        token3.pause();
-        await delay(120);
-        token3.resume();
-        promise1 = token3.wait(delay(50, 'finished'), true);
-        promise2 = token4.wait(delay(50, 'finished'), true);
-        result = await promise1;
-        expect(result).toBe('finished');
-        result = await promise2;
-        expect(result).not.toBe('finished');
-    });
-
-    it('token chain allowsPause and pause/resume', async () => {
-        let token1, token2, token3, token4;
-
-        token1 = CancellationToken.timeout(150);
-        token2 = token1.manual();
-        token3 = token2.timeout(150);
-        token4 = token2.manual();
-
-        expect(() => token1.allowPause()).toThrow();
-        expect(() => token2.allowPause()).toThrow();
-        expect(() => token3.allowPause()).toThrow();
-        expect(() => token4.allowPause()).toThrow();
-        expect(() => token1.pause()).toThrow();
-        expect(() => token2.pause()).toThrow();
-        expect(() => token3.pause()).toThrow();
-        expect(() => token4.pause()).toThrow();
-
-        expect(token1.allowsPause).toBe(false);
-        expect(token2.allowsPause).toBe(false);
-        expect(token3.allowsPause).toBe(false);
-        expect(token4.allowsPause).toBe(false);
-
-        token1 = CancellationToken.timeout(150);
-        expect(() => token1.allowPause()).not.toThrow();
-        token2 = token1.manual();
-        expect(() => token2.allowPause()).not.toThrow();
-        token3 = token2.timeout(150);
-        expect(() => token3.allowPause()).not.toThrow();
-        token4 = token2.manual();
-        expect(() => token4.allowPause()).not.toThrow();
-
-        expect(token1.allowsPause).toBe(true);
-        expect(token2.allowsPause).toBe(true);
-        expect(token3.allowsPause).toBe(true);
-        expect(token4.allowsPause).toBe(true);
-
-        expect(() => token4.pause()).not.toThrow();
-        expect(() => token4.resume()).not.toThrow();
-        expect(() => token3.pause()).not.toThrow();
-        expect(() => token3.resume()).not.toThrow();
-
-        expect(() => token1.pause()).not.toThrow();
-        expect(() => token2.pause()).not.toThrow();
-        expect(() => token3.pause()).not.toThrow();
-        expect(() => token4.pause()).not.toThrow();
-
-        expect(token1.paused).toBe(true);
-        expect(token2.paused).toBe(true);
-        expect(token3.paused).toBe(true);
-        expect(token4.paused).toBe(true);
-
-        expect(() => token4.resume()).not.toThrow();
-
-        expect(token1.paused).toBe(true);
-        expect(token2.paused).toBe(true);
-        expect(token3.paused).toBe(true);
-        expect(token4.paused).toBe(false);
-
-        expect(() => token3.resume()).not.toThrow();
-
-        expect(token1.paused).toBe(true);
-        expect(token2.paused).toBe(true);
-        expect(token3.paused).toBe(false);
-        expect(token4.paused).toBe(false);
-
-        expect(() => token2.resume()).not.toThrow();
-
-        expect(token1.paused).toBe(true);
-        expect(token2.paused).toBe(false);
-        expect(token3.paused).toBe(false);
-        expect(token4.paused).toBe(false);
-
-        expect(() => token1.resume()).not.toThrow();
-
-        expect(token1.paused).toBe(false);
-        expect(token2.paused).toBe(false);
-        expect(token3.paused).toBe(false);
-        expect(token4.paused).toBe(false);
-
-        expect(() => token1.pause()).not.toThrow();
-        expect(() => token2.pause()).not.toThrow();
-        expect(() => token3.pause()).not.toThrow();
-        expect(() => token4.pause()).not.toThrow();
-        expect(() => token1.pause()).toThrow();
-        expect(() => token2.pause()).toThrow();
-        expect(() => token3.pause()).toThrow();
-        expect(() => token4.pause()).toThrow();
-        expect(() => token1.resume()).not.toThrow();
-        expect(() => token2.resume()).not.toThrow();
-        expect(() => token3.resume()).not.toThrow();
-        expect(() => token4.resume()).not.toThrow();
-        expect(() => token1.resume()).toThrow();
-        expect(() => token2.resume()).toThrow();
-        expect(() => token3.resume()).toThrow();
-        expect(() => token4.resume()).toThrow();
-    });
-
     it('sleep and static sleep', async () => {
-        await expect(CancellationToken.timeout(30).sleep(20, true)).resolves.toBe(true);
-        await expect(CancellationToken.timeout(20).sleep(30, true)).rejects.toThrow();
+        await expect(CancellationToken.timeout(10).sleep(5)).resolves.toBe(true);
+        await expect(CancellationToken.timeout(10).sleep(5, "test")).resolves.toBe("test");
+        await expect(CancellationToken.timeout(5).sleep(10, true)).rejects.toThrow();
     });
 
+    it('race', async () => {
+        await expect(CancellationToken.timeout(5).race((token) => [token.sleep(20), token.sleep(25)])).rejects.toThrow("Async call cancelled");
+        await expect(CancellationToken.timeout(5).race((token) => [token.sleep(5), token.sleep(5)])).rejects.toThrow("Async call cancelled");
+        await expect(CancellationToken.manual().race((token) => [delayError(2), delayError(5)])).rejects.toThrow("Race indexed error");
+        await expect(CancellationToken.timeout(20).race((token) => [token.sleep(7, 1), token.sleep(5, 2)])).resolves.toEqual({ index: 1, result: 2 });
+
+        await expect(CancellationToken.timeout(5).race((token) => [token.sleep(20), token.sleep(25)], true)).resolves.toBeInstanceOf(CancellationToken);
+        await expect(CancellationToken.timeout(5).race((token) => [token.sleep(5), token.sleep(6)], true)).resolves.toBeInstanceOf(CancellationToken);
+        await expect(CancellationToken.manual().race((token) => [delayError(2), delayError(5)], true)).rejects.toThrow("Race indexed error");
+        await expect(CancellationToken.timeout(20).race((token) => [token.sleep(7, 1), token.sleep(5, 2)], true)).resolves.toEqual({ index: 1, result: 2 });
+
+        await expect(CancellationToken.timeout(10).race((token) => [token.timeout(5).sleep(10), token.timeout(6).sleep(10)])).rejects.toThrow("Race indexed error");
+        await expect(CancellationToken.timeout(10).race((token) => [token.timeout(5).sleep(10, true, true), token.timeout(6).sleep(10, true, true)])).resolves.toHaveProperty('index', 0);
+    });
+
+    it('any', async () => {
+        await expect(CancellationToken.timeout(5).any((token) => [token.sleep(20), token.sleep(25)])).rejects.toThrow("Async call cancelled");
+        await expect(CancellationToken.timeout(5).any((token) => [token.sleep(5), token.sleep(5)])).rejects.toThrow("Async call cancelled");
+        await expect(CancellationToken.manual().any((token) => [delayError(2), delayError(5)])).rejects.toThrow(AggregateError);
+        await expect(CancellationToken.timeout(20).any((token) => [token.sleep(7, 1), token.sleep(5, 2)])).resolves.toEqual({ index: 1, result: 2 });
+
+        await expect(CancellationToken.timeout(5).any((token) => [token.sleep(20), token.sleep(25)], true)).resolves.toBeInstanceOf(CancellationToken);
+        await expect(CancellationToken.timeout(5).any((token) => [token.sleep(5), token.sleep(6)], true)).resolves.toBeInstanceOf(CancellationToken);
+        await expect(CancellationToken.manual().any((token) => [delayError(2), delay(5, 2)], true)).resolves.toEqual({ index: 1, result: 2 });
+        await expect(CancellationToken.timeout(20).any((token) => [token.sleep(7, 1), token.sleep(5, 2)], true)).resolves.toEqual({ index: 1, result: 2 });
+
+        await expect(CancellationToken.timeout(10).any((token) => [token.timeout(5).sleep(10), token.timeout(6).sleep(10)])).rejects.toThrow(AggregateError);
+        await expect(CancellationToken.timeout(10).any((token) => [token.timeout(5).sleep(10, true, true), token.timeout(6).sleep(10, true, true)])).resolves.toHaveProperty('index', 0)
+    });
+
+    /*
     it('race', async () => {
         let token, result;
 
@@ -429,28 +407,31 @@ describe('CancellationToken', () => {
             index: 0,
         });
 
-        await expect(CancellationToken.timeout(20).race((token) => [token.sleep(20), delayError(10, "error message")], false)).rejects.toThrow("error message");
+        await expect(CancellationToken.timeout(20).race((token) => [token.sleep(20), delayError(10, 'error message')], false)).rejects.toThrow('error message');
 
         let cancelled = true;
 
-        await expect(CancellationToken.timeout(25).race((token) => [
+        await expect(
+            CancellationToken.timeout(25).race((token) => [
                 token.sleep(10, true),
                 (async (token) => {
                     await token.sleep(20);
                     cancelled = false;
                 })(),
-            ])).resolves.toMatchObject({
-                result: true,
-                index: 0,
-            });
+            ])
+        ).resolves.toMatchObject({
+            result: true,
+            index: 0,
+        });
 
         expect(cancelled).toBe(true);
     });
+    */
 
     it('processCancel', async () => {
         let cancelled = false;
         let token1 = CancellationToken.timeout(10);
-        let token2 = token1.manual(false);
+        let token2 = token1.manual();
         let promise = new Promise((resolve, reject) => {
             token2.processCancel(resolve, reject, () => (cancelled = true), true);
         });
@@ -460,7 +441,7 @@ describe('CancellationToken', () => {
 
         cancelled = false;
         token1 = CancellationToken.timeout(10);
-        token2 = token1.manual(false);
+        token2 = token1.manual();
         promise = new Promise((resolve, reject) => {
             token2.processCancel(resolve, reject, () => (cancelled = true));
         });

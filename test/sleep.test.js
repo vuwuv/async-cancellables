@@ -9,5 +9,6 @@ describe('sleep', () => {
         expect(time).toBeLessThan(2);
         expect(time).toBeGreaterThanOrEqual(-1);
         expect(result).toBe('test');
+        await expect(sleep(1)).resolves.toBe(true);
     });
 });
