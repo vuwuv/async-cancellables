@@ -32,6 +32,12 @@ describe('AsyncValue', () => {
         asyncLock.release(ticket);
         expect(asyncLock.availableSlots).toBe(1);
 
+        expect(asyncLock.availableSlots).toBe(1);
+        ticket = await asyncLock.waitOne();
+        expect(asyncLock.availableSlots).toBe(0);
+        ticket.release();
+        expect(asyncLock.availableSlots).toBe(1);
+
         promises = [
             callFor(asyncLock, asyncLock.waitOne(), 40),
             callFor(asyncLock, asyncLock.waitOne(), 20),
@@ -135,6 +141,14 @@ describe('AsyncValue', () => {
         asyncLock.wait(1);
         asyncLock.wait(2)
         expect(() => asyncLock.totalSlots = 1).toThrow();
+    });
+
+    it('release using ticket', async () => {
+        let asyncLock = new AsyncLock();
+        let ticket = await asyncLock.waitOne();
+        expect(asyncLock.availableSlots).toBe(0);
+        ticket.release()
+        expect(asyncLock.availableSlots).toBe(1);
     });
 
     it('int checks', async () => {

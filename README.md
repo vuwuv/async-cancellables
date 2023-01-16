@@ -105,11 +105,12 @@ CancellationToken token has the same static wait methods, except they have addit
 
 #### Cancel methods
 
-- `cancel()` cancels any (not just manual) token immediately and returns `this`
+- `cancel(error = null)` cancels any (not just manual) token immediately and returns `this`, `error` can contain custom user error information
 
 #### Properties
 
 - `cancelled` returns `true` if token is cancelled
+- `cancelledError` returns custom user error information optionally specified at `cancel()` method
 - `isManual` returns `true` if token has `manual` type
 - `isTimeout` returns `true` if token has `timeout` type
 - `isEvent` returns `true` if token has `event` type
@@ -188,7 +189,9 @@ All of them return `ticket` to be used for lock release. Default priority is `0`
 
 #### Releasing slots
 
-- `release(ticket)` releases slot count locked by any of the wait methods.
+- `release(ticket)` releases slot count locked by any of the wait methods
+
+Another way to release slots used by `ticket` is to call `release()` method of the ticket: `ticket.release()`
 
 #### Accessing properties
 

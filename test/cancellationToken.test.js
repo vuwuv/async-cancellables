@@ -1,6 +1,6 @@
 import EventEmitter from 'events';
 
-import { CancellationToken, CT } from '../index.js';
+import { CancellationToken, CT, sleep } from '../index.js';
 
 async function delay(ms, param) {
     return new Promise((resolve, reject) => setTimeout(() => resolve(param), ms));
@@ -87,6 +87,19 @@ describe('CancellationToken', () => {
         events.timer(timeout);
         if (name === 'manual') setTimeout(() => token.cancel(), timeout);
         await expect(token.wait(delay(15))).rejects.toThrow();
+    });
+
+    it.each([['timeout'], ['manual'], ['event']])('cancel error token %p', async (name) => {
+        events.clear();
+        const timeout = 7;
+        let token =
+            name === 'timeout' ? CT.timeout(timeout) : name === 'manual' ? CT.manual() : CT.event(events, 'test');
+        let error = new Error("test error");
+        token.cancel(error);
+        await sleep(10);
+        await expect(token.wait(delay(15))).rejects.toThrow();
+        await expect(token.wait(delay(15), true)).resolves.toBe(token);
+        expect(token.cancelledError).toBe(error);
     });
 
     it.each([['timeout'], ['manual'], ['event']])('target promise rejected %p token', async (name) => {
