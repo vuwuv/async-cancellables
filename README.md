@@ -118,15 +118,16 @@ CancellationToken token has the same static wait methods, except they have addit
 
 #### Utility properties and methods
 
-- `isToken(object)` checks if the object is a cancellation token
+- `isToken(object)` checks if the `object` is a cancellation token
 - `cancelledBy` if cancelled returns token that cancelled, `null` otherwise
 - `throwIfCancelled()` if cancelled throws cancel error
 - `catchCancelError(promise)` awaits the promise and returns it's result, if cancel error is thrown returns cancelled token, rethrows any other error
-- `processCancel(resolve, reject, cancel, doNotThrow = false)` when token is cancelled calls `cancel` and then `resolve` or `reject` depending on `doNotThrow` value
+- `processCancel(resolve, reject, cancel, doNotThrow = false)` when token is cancelled calls `cancel` and then `resolve` or `reject` depending on `doNotThrow` value and returns array of rewritten `resolve` and `reject` functions to be used
 
 #### Static utility methods
 
 - `CancellationToken.isToken(object)` same as non-static method
+- `CancellationToken.isCancellationError(error)` checks if the `error` is a `CancellationEventError`
 - `CancellationToken.catchCancelError(promise)` same as non-static method
 
 #### Race methods
@@ -221,6 +222,7 @@ const eventState = AsyncState.event(target, event, handler);
 
 - `wait(cancellationToken = null)` waits for the value to be set to any defined value or returns it if already is
 - `waitEmpty(cancellationToken = null)` waits for the value to be cleared back to `undefined`
+- `handleValue(handler, cancellationToken = null)` waits for the value to be set to any defined value if not yet and returns the result of `handler(value)`
 
 #### Accessing current value
 

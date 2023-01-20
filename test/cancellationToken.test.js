@@ -94,7 +94,7 @@ describe('CancellationToken', () => {
         const timeout = 7;
         let token =
             name === 'timeout' ? CT.timeout(timeout) : name === 'manual' ? CT.manual() : CT.event(events, 'test');
-        let error = new Error("test error");
+        let error = new Error('test error');
         token.cancel(error);
         await sleep(10);
         await expect(token.wait(delay(15))).rejects.toThrow();
@@ -367,28 +367,28 @@ describe('CancellationToken', () => {
 
     it('sleep and static sleep', async () => {
         await expect(CancellationToken.timeout(10).sleep(5)).resolves.toBe(true);
-        await expect(CancellationToken.timeout(10).sleep(5, "test")).resolves.toBe("test");
+        await expect(CancellationToken.timeout(10).sleep(5, 'test')).resolves.toBe('test');
         await expect(CancellationToken.timeout(5).sleep(10, true)).rejects.toThrow();
     });
 
     it('race', async () => {
-        await expect(CancellationToken.timeout(5).race((token) => [token.sleep(20), token.sleep(25)])).rejects.toThrow("Async call cancelled");
-        await expect(CancellationToken.timeout(5).race((token) => [token.sleep(5), token.sleep(5)])).rejects.toThrow("Async call cancelled");
-        await expect(CancellationToken.manual().race((token) => [delayError(2), delayError(5)])).rejects.toThrow("Race indexed error");
+        await expect(CancellationToken.timeout(5).race((token) => [token.sleep(20), token.sleep(25)])).rejects.toThrow('Async call cancelled');
+        await expect(CancellationToken.timeout(5).race((token) => [token.sleep(5), token.sleep(5)])).rejects.toThrow('Async call cancelled');
+        await expect(CancellationToken.manual().race((token) => [delayError(2), delayError(5)])).rejects.toThrow('Race indexed error');
         await expect(CancellationToken.timeout(20).race((token) => [token.sleep(7, 1), token.sleep(5, 2)])).resolves.toEqual({ index: 1, result: 2 });
 
         await expect(CancellationToken.timeout(5).race((token) => [token.sleep(20), token.sleep(25)], true)).resolves.toBeInstanceOf(CancellationToken);
         await expect(CancellationToken.timeout(5).race((token) => [token.sleep(5), token.sleep(6)], true)).resolves.toBeInstanceOf(CancellationToken);
-        await expect(CancellationToken.manual().race((token) => [delayError(2), delayError(5)], true)).rejects.toThrow("Race indexed error");
+        await expect(CancellationToken.manual().race((token) => [delayError(2), delayError(5)], true)).rejects.toThrow('Race indexed error');
         await expect(CancellationToken.timeout(20).race((token) => [token.sleep(7, 1), token.sleep(5, 2)], true)).resolves.toEqual({ index: 1, result: 2 });
 
-        await expect(CancellationToken.timeout(10).race((token) => [token.timeout(5).sleep(10), token.timeout(6).sleep(10)])).rejects.toThrow("Race indexed error");
+        await expect(CancellationToken.timeout(10).race((token) => [token.timeout(5).sleep(10), token.timeout(6).sleep(10)])).rejects.toThrow('Race indexed error');
         await expect(CancellationToken.timeout(10).race((token) => [token.timeout(5).sleep(10, true, true), token.timeout(6).sleep(10, true, true)])).resolves.toHaveProperty('index', 0);
     });
 
     it('any', async () => {
-        await expect(CancellationToken.timeout(5).any((token) => [token.sleep(20), token.sleep(25)])).rejects.toThrow("Async call cancelled");
-        await expect(CancellationToken.timeout(5).any((token) => [token.sleep(5), token.sleep(5)])).rejects.toThrow("Async call cancelled");
+        await expect(CancellationToken.timeout(5).any((token) => [token.sleep(20), token.sleep(25)])).rejects.toThrow('Async call cancelled');
+        await expect(CancellationToken.timeout(5).any((token) => [token.sleep(5), token.sleep(5)])).rejects.toThrow('Async call cancelled');
         await expect(CancellationToken.manual().any((token) => [delayError(2), delayError(5)])).rejects.toThrow(AggregateError);
         await expect(CancellationToken.timeout(20).any((token) => [token.sleep(7, 1), token.sleep(5, 2)])).resolves.toEqual({ index: 1, result: 2 });
 
@@ -400,46 +400,6 @@ describe('CancellationToken', () => {
         await expect(CancellationToken.timeout(10).any((token) => [token.timeout(5).sleep(10), token.timeout(6).sleep(10)])).rejects.toThrow(AggregateError);
         await expect(CancellationToken.timeout(10).any((token) => [token.timeout(5).sleep(10, true, true), token.timeout(6).sleep(10, true, true)])).resolves.toHaveProperty('index', 0)
     });
-
-    /*
-    it('race', async () => {
-        let token, result;
-
-        token = CancellationToken.timeout(10);
-        await expect(token.race((token) => [token.sleep(20), token.sleep(25)])).rejects.toThrow();
-
-        token = CancellationToken.manual();
-        result = await token.race((token) => [token.sleep(20), token.sleep(10)]);
-        expect(result.index).toBe(1);
-
-        await expect(CancellationToken.manual().race((token) => [delayError(20), delayError(10)])).rejects.toThrow(AggregateError);
-        await expect(CancellationToken.manual().race((token) => [delayError(20), delayError(10)], false)).rejects.not.toThrow(AggregateError);
-        await expect(CancellationToken.timeout(50).race((token) => [token.sleep(100), token.sleep(200)])).rejects.toThrow();
-        await expect(CancellationToken.timeout(50).race((token) => [token.sleep(10, true), delayError(20)], false)).resolves.toMatchObject({
-            result: true,
-            index: 0,
-        });
-
-        await expect(CancellationToken.timeout(20).race((token) => [token.sleep(20), delayError(10, 'error message')], false)).rejects.toThrow('error message');
-
-        let cancelled = true;
-
-        await expect(
-            CancellationToken.timeout(25).race((token) => [
-                token.sleep(10, true),
-                (async (token) => {
-                    await token.sleep(20);
-                    cancelled = false;
-                })(),
-            ])
-        ).resolves.toMatchObject({
-            result: true,
-            index: 0,
-        });
-
-        expect(cancelled).toBe(true);
-    });
-    */
 
     it('processCancel', async () => {
         let cancelled = false;
@@ -459,6 +419,37 @@ describe('CancellationToken', () => {
             token2.processCancel(resolve, reject, () => (cancelled = true));
         });
         await expect(promise).rejects.toThrow();
+        expect(cancelled).toBe(true);
+    });
+
+    it('processCancel unsubscribe check', async () => {
+        let cancelled = false;
+        let token = CancellationToken.timeout(10);
+        let promiseResolve, promiseReject, promise;
+
+        promise = new Promise((resolve, reject) => {
+            [promiseResolve, promiseReject] = token.processCancel(resolve, reject, () => (cancelled = true), true, true);
+        });
+        setTimeout(() => promiseResolve(true), 5);
+        await sleep(11);
+        expect(await promise).toBe(true);
+        expect(cancelled).toBe(false);
+
+        token = CancellationToken.timeout(10);
+        promise = new Promise((resolve, reject) => {
+            [promiseResolve, promiseReject] = token.processCancel(resolve, reject, () => (cancelled = true), true, true);
+        });
+                setTimeout(() => promiseReject(new Error('test')), 5);
+        await expect(promise).rejects.toThrow('test');
+        await sleep(10);
+        expect(cancelled).toBe(false);
+
+        token = CancellationToken.timeout(10);
+        promise = new Promise((resolve, reject) => {
+            [promiseResolve, promiseReject] = token.processCancel(resolve, reject, () => (cancelled = true), true, true);
+        });
+        setTimeout(() => promiseResolve(true), 15);
+        expect(await promise).toBe(token);
         expect(cancelled).toBe(true);
     });
 });
