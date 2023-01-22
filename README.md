@@ -77,8 +77,9 @@ or by creating direct children for any token instance (same parameters apply):
 - `token.timeout(ms, parents = null)`
 - `token.event(target, eventName, parents = null)`
 
-You can also assign additional parents to existing tokens via `attachTo` method
-- `token.attachTo(...parents)` method ignore duplicate and `null` parents and returns `this`
+You can also add/remove additional parents to existing tokens via `attachTo` and `detachFrom` methods
+- `token.attachTo(...parents)` adds parents ignoring duplicate and `null` parents and returns `this`
+- `token.detachFrom(...parents)` removes parents ignoring non-existent and `null` parents and returns `this`
 
 Token is also cancelled when any of it's direct or indirect parents cancels. If a token chain is attached to a cancelled parent the whole chain immediately cancels.
 

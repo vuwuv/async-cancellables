@@ -222,6 +222,108 @@ describe('CancellationToken', () => {
         expect(counter).toBe(1);
     });
 
+    it.each([['oneByOne'], ['oneByOneAttachReverse'], ['oneByOneDetachReverse'], ['allAtOnce']])('attachTo/detachFrom %p method', async (name) => {
+        const create = function(...tokens) {
+            let child = CancellationToken.manual();
+
+            if (name === 'oneByOne' || name === 'oneByOneDetachReverse') {
+                for (let token of tokens) child.attachTo(token);
+            }
+            else if (name === 'oneByOneAttachReverse') {
+                for (let token of tokens.reverse()) child.attachTo(token);
+            }
+            else if (name === 'allAtOnce') {
+                child.attachTo(...tokens);   
+            }
+            
+            return child;
+        };
+
+        const detach = function(child, ...tokens) {
+            if (name === 'oneByOne' || name === 'oneByOneAttachReverse') {
+                for (let token of tokens) child.detachFrom(token);
+            }
+            else if (name === 'oneByOneDetachReverse') {
+                for (let token of tokens.reverse()) child.detachFrom(token);
+            }
+            else if (name === 'allAtOnce') {
+                child.detachFrom(...tokens);   
+            }
+            
+            return child;
+        };
+
+        let parent1 = CancellationToken.manual(), parent2 = CancellationToken.manual(), parent3 = CancellationToken.manual();
+        let child = create(parent1, parent2, parent3);
+        detach(child, parent1, parent2, parent3);
+        expect(child.cancelled).toBe(false);
+        parent1.cancel();       
+        expect(child.cancelled).toBe(false);
+
+        parent1 = CancellationToken.manual(), parent2 = CancellationToken.manual(), parent3 = CancellationToken.manual();
+        child = create(parent1, parent2, parent3);
+        detach(child, parent1, parent2, parent3);
+        expect(child.cancelled).toBe(false);
+        parent2.cancel();       
+        expect(child.cancelled).toBe(false);
+
+        parent1 = CancellationToken.manual(), parent2 = CancellationToken.manual(), parent3 = CancellationToken.manual();
+        child = create(parent1, parent2, parent3);
+        detach(child, parent1, parent2, parent3);
+        expect(child.cancelled).toBe(false);
+        parent3.cancel();       
+        expect(child.cancelled).toBe(false);
+
+        parent1 = CancellationToken.manual(), parent2 = CancellationToken.manual(), parent3 = CancellationToken.manual();
+        child = create(parent1, parent2, parent3);
+        detach(child, parent2, parent3);
+        expect(child.cancelled).toBe(false);
+        parent1.cancel();       
+        expect(child.cancelled).toBe(true);
+        expect(child.cancelledBy).toBe(parent1);
+
+        parent1 = CancellationToken.manual(), parent2 = CancellationToken.manual(), parent3 = CancellationToken.manual();
+        child = create(parent1, parent2, parent3);
+        detach(child, parent1, parent3);
+        expect(child.cancelled).toBe(false);
+        parent2.cancel();       
+        expect(child.cancelled).toBe(true);
+        expect(child.cancelledBy).toBe(parent2);
+
+        parent1 = CancellationToken.manual(), parent2 = CancellationToken.manual(), parent3 = CancellationToken.manual();
+        child = create(parent1, parent2, parent3);
+        detach(child, parent1, parent2);
+        expect(child.cancelled).toBe(false);
+        parent3.cancel();       
+        expect(child.cancelled).toBe(true);
+        expect(child.cancelledBy).toBe(parent3);
+
+        parent1 = CancellationToken.manual();
+        child = create(parent1);
+        detach(child, parent1);
+        expect(child.cancelled).toBe(false);
+        parent1.cancel();       
+        expect(child.cancelled).toBe(false);
+
+        parent1 = CancellationToken.manual(), parent2 = CancellationToken.manual(), parent3 = CancellationToken.manual();
+        child = create(parent1);
+        child.detachFrom(parent1);
+        child.attachTo(parent2);
+        child.detachFrom(parent2);
+        child.attachTo(parent3);
+        child.detachFrom(parent3);
+        expect(child.cancelled).toBe(false);
+        parent1.cancel();      
+        parent2.cancel();
+        parent3.cancel();
+        expect(child.cancelled).toBe(false);
+
+        parent1 = CancellationToken.manual().cancel();
+        child = CancellationToken.manual().attachTo(parent1);
+        child.detachFrom(parent1);
+        expect(child.cancelled).toBe(true);
+    });
+
     it('catch cancel error', async () => {
         let token = CancellationToken.timeout(10);
         await expect(token.catchCancelError(token.sleep(15))).resolves.toBeInstanceOf(CancellationToken);
