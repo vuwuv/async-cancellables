@@ -1,8 +1,15 @@
 import EventEmitter from 'events';
-import { CT, AsyncState, sleep } from '../index.js';
+import AsyncState from '@async-cancellables/async-state';
+import CT from '@async-cancellables/ct';
 
 async function delay(ms, param) {
     return new Promise((resolve, reject) => setTimeout(() => resolve(param), ms));
+}
+
+async function sleep(ms, returnValue = true) {
+    return new Promise((resolve) => {
+        setTimeout(resolve.bind(undefined, returnValue), ms);
+    });
 }
 
 const symbol = Symbol();

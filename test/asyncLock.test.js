@@ -1,4 +1,5 @@
-import { AsyncLock, CancellationToken } from '../index.js';
+import AsyncLock from '@async-cancellables/async-lock';
+import CT from '@async-cancellables/ct';
 
 async function delay(ms, param) {
     return new Promise((resolve, reject) => setTimeout(() => resolve(param), ms));
@@ -14,13 +15,13 @@ async function checkPromises(promises) {
 
 async function callFor(asyncLock, promise, time) {
     const ticket = await promise;
-    if (CancellationToken.isToken(ticket)) return ticket;
+    if (CT.isToken(ticket)) return ticket;
     await delay(time);
     asyncLock.release(ticket);
     return true;
 }
 
-describe('AsyncValue', () => {
+describe('AsyncLock', () => {
     it('basic locks', async () => {
         let asyncLock = new AsyncLock(),
             results,
@@ -108,7 +109,7 @@ describe('AsyncValue', () => {
             callFor(asyncLock, asyncLock.wait(1), 40),
             callFor(asyncLock, asyncLock.wait(2), 40),
             callFor(asyncLock, asyncLock.wait(1), 20),
-            callFor(asyncLock, asyncLock.wait(1, 1), 60),
+            callFor(asyncLock, asyncLock.waitPrioritized(1, 1), 60),
         ];
 
         results = await checkPromises(promises);
@@ -160,8 +161,8 @@ describe('AsyncValue', () => {
         expect(() => asyncLock.totalSlots = 1.5).toThrow();
         expect(() => asyncLock.totalSlots = 1).not.toThrow();
 
-        await expect(async () => asyncLock.wait(1.5, 1.5)).rejects.toThrow();
-        await expect(async () => asyncLock.wait(1, 1.5)).resolves;
+        await expect(async () => asyncLock.waitPrioritized(1.5, 1.5)).rejects.toThrow();
+        await expect(async () => asyncLock.waitPrioritized(1, 1.5)).resolves;
     });
 
     it('locks with cancellation', async () => {
@@ -171,13 +172,13 @@ describe('AsyncValue', () => {
 
         let token1, token2;
 
-        token1 = CancellationToken.timeout(40);
-        token2 = CancellationToken.timeout(70);
+        token1 = CT.timeout(40);
+        token2 = CT.timeout(70);
 
         promises = [
             callFor(asyncLock, asyncLock.waitOne(), 100),
-            callFor(asyncLock, CancellationToken.catchCancelError(asyncLock.waitOne(token1)), 20),
-            callFor(asyncLock, CancellationToken.catchCancelError(asyncLock.waitOne(token2)), 60),
+            callFor(asyncLock, CT.catchCancelError(asyncLock.waitOne(token1)), 20),
+            callFor(asyncLock, CT.catchCancelError(asyncLock.waitOne(token2)), 60),
             callFor(asyncLock, asyncLock.waitOne(), 20),
         ];
 
@@ -206,7 +207,7 @@ describe('AsyncValue', () => {
         expect(asyncLock.availableSlots).toBe(1);
 
         callFor(asyncLock, asyncLock.waitOne(), 70);
-        await expect(async () => asyncLock.waitOne(CancellationToken.timeout(20))).rejects.toThrow();
-        await expect(async () => asyncLock.wait(1, 0, CancellationToken.timeout(20))).rejects.toThrow();
+        await expect(async () => asyncLock.waitOne(CT.timeout(20))).rejects.toThrow();
+        await expect(async () => asyncLock.waitPrioritized(1, 0, CT.timeout(20))).rejects.toThrow();
     });
 });

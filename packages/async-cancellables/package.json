@@ -1,0 +1,32 @@
+{
+    "name": "async-cancellables",
+    "version": "1.1.0",
+    "description": "CancellationToken class",
+    "main": "index.js",
+    "type": "module",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/vuwuv/async-cancellables.git",
+        "directory": "packages/async-cancellables"
+    },
+    "keywords": [
+        "async",
+        "cancellable",
+        "CancellationToken",
+        "cancellation"
+    ],
+    "author": "vuwuv",
+    "license": "MIT",
+    "bugs": {
+        "url": "https://github.com/vuwuv/async-cancellables/issues"
+    },
+    "homepage": "https://github.com/vuwuv/async-cancellables#readme",
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "dependencies": {
+        "@async-cancellables/async-lock": "^2.0.0",
+        "@async-cancellables/async-state": "^2.0.0",
+        "@async-cancellables/ct": "^2.0.0"
+    }
+}

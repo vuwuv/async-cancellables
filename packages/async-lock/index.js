@@ -4,7 +4,7 @@ function AsyncLockTicket(lock, slotCount) {
     return Object.freeze(this);
 }
 
-AsyncLockTicket.prototype.release = function() {
+AsyncLockTicket.prototype.release = function () {
     this.lock.release(this);
 }
 
@@ -92,13 +92,14 @@ class AsyncLock {
         return this.#wait(1, 0, ct);
     }
 
-    async waitRegular(slotCount = 1, ct = null) {
+    async wait(slotCount, ct = null) {
         return this.#wait(slotCount, 0, ct);
     }
 
-    async wait(slotCount = 1, priority = 0, ct = null) {
+    async waitPrioritized(slotCount, priority, ct = null) {
         return this.#wait(slotCount, priority, ct);
     }
 }
 
 export default AsyncLock;
+export { AsyncLockTicket };
