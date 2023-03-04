@@ -1,6 +1,6 @@
 {
     "name": "@async-cancellables/ct",
-    "version": "1.1.0",
+    "version": "2.0.0",
     "description": "CancellationToken class",
     "main": "index.js",
     "type": "module",
@@ -11,7 +11,7 @@
     },
     "keywords": [
         "async",
-	    "cancellable",
+        "cancellable",
         "CancellationToken",
         "cancellation"
     ],
@@ -22,6 +22,6 @@
     },
     "homepage": "https://github.com/vuwuv/async-cancellables#readme",
     "engines": {
-      "node": ">=18.0.0"
+        "node": ">=18.0.0"
     }
 }

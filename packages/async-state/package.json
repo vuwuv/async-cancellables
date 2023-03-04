@@ -1,6 +1,6 @@
 {
     "name": "@async-cancellables/async-state",
-    "version": "1.1.0",
+    "version": "2.0.0",
     "description": "Asynchronous state with CancellationToken support",
     "main": "index.js",
     "type": "module",
@@ -23,9 +23,9 @@
     },
     "homepage": "https://github.com/vuwuv/async-cancellables#readme",
     "dependencies": {
-        "@async-cancellables/ct": ">=1.1.0"
+        "@async-cancellables/ct": "^2.0.0"
     },
     "engines": {
-      "node": ">=18.0.0"
+        "node": ">=18.0.0"
     }
 }
