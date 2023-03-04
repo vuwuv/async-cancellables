@@ -1,0 +1,30 @@
+{
+    "name": "@async-cancellables/async-hybrid-limit",
+    "version": "1.1.0",
+    "description": "Asynchronous lock pool with priorities and CancellationToken support",
+    "main": "index.js",
+    "type": "module",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/vuwuv/async-cancellables.git",
+        "directory": "packages/async-hybrid-limit"
+    },
+    "keywords": [
+        "async",
+        "cancellable",
+        "AsyncHybridLimit",
+        "cancellation"
+    ],
+    "author": "vuwuv",
+    "license": "MIT",
+    "bugs": {
+        "url": "https://github.com/vuwuv/async-cancellables/issues"
+    },
+    "homepage": "https://github.com/vuwuv/async-cancellables#readme",
+    "peerDependencies": {
+        "@async-cancellables/ct": ">=1.1.0"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    }
+}

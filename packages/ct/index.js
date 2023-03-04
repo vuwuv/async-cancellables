@@ -1,6 +1,6 @@
 import EventEmitter from 'events';
-import EventProxy from './eventProxy.js';
-import sleep from './sleep.js';
+import EventProxy from './lib/eventProxy.js';
+import sleep from './lib/sleep.js';
 
 const ManualToken = 1;
 const TimeoutToken = 2;
@@ -51,22 +51,28 @@ class CancellationToken extends EventEmitter {
 
     #ref;
     #listener;
+    #proxyListener;
     #parents;
 
     #type;
+    #name = null;
 
     #cancelPromise = [null, null];
 
-    static manual(parents = null) {
-        return new CancellationToken({ type: ManualToken, parents });
+    static manual(options = null) {
+        return new CancellationToken({ type: ManualToken, options });
     }
 
-    static timeout(timeout, parents = null) {
-        return new CancellationToken({ type: TimeoutToken, timeout, parents });
+    static timeout(timeout, options = null) {
+        return new CancellationToken({ type: TimeoutToken, timeout, options });
     }
 
-    static event(target, eventName, parents = null) {
-        return new CancellationToken({ type: EventToken, target, eventName, parents });
+    static event(target, eventName, options = null) {
+        return new CancellationToken({ type: EventToken, target, eventName, options });
+    }
+
+    static get EventProxy() {
+        return EventProxy;
     }
 
     static isToken(token) {
@@ -77,36 +83,36 @@ class CancellationToken extends EventEmitter {
         return error instanceof CancellationEventError;
     }
 
-    static async sleep(cancellationToken, ms, successValue, doNotThrow = false) {
+    static async sleep(ms, successValue, cancellationToken = null, doNotThrow = false) {
         if (cancellationToken instanceof CancellationToken) return cancellationToken.sleep(ms, successValue, doNotThrow);
         else return sleep(ms, successValue);
     }
 
-    static async wait(cancellationToken, promise, doNotThrow = false) {
+    static async wait(promise, cancellationToken = null, doNotThrow = false) {
         if (cancellationToken instanceof CancellationToken) return cancellationToken.wait(promise, doNotThrow);
         else return promise;
     }
 
-    static async waitEvent(cancellationToken, target, event, doNotThrow = false) {
+    static async waitEvent(target, event, cancellationToken = null, doNotThrow = false) {
         if (cancellationToken instanceof CancellationToken) return cancellationToken.waitEvent(target, event, doNotThrow);
         else return new Promise((resolve) => target.once(event, (...args) => resolve(args)));
     }
 
-    static async handleEvent(cancellationToken, target, event, handler, doNotThrow = false) {
+    static async handleEvent(target, event, handler, cancellationToken = null, doNotThrow = false) {
         if (cancellationToken instanceof CancellationToken) return cancellationToken.handleEvent(target, event, handler, doNotThrow);
         else return new Promise((resolve) => target.once(event, (...args) => resolve(handler(...args))));
     }
 
-    manual(parents = null) {
-        return CancellationToken.manual(parents ? [this, ...parents] : [this]);
+    manual(options = null) {
+        return new CancellationToken({ type: ManualToken, options, parent: this });
     }
 
-    timeout(timeout, parents = null) {
-        return CancellationToken.timeout(timeout, parents ? [this, ...parents] : [this]);
+    timeout(timeout, options = null) {
+        return new CancellationToken({ type: TimeoutToken, timeout, options, parent: this });        
     }
 
-    event(target, eventName, parents = null) {
-        return CancellationToken.event(target, eventName, parents ? [this, ...parents] : [this]);
+    event(target, eventName, options = null) {
+        return new CancellationToken({ type: EventToken, target, eventName, options, parent: this });
     }
 
     constructor(options) {
@@ -116,7 +122,21 @@ class CancellationToken extends EventEmitter {
 
         this.#type = options.type || ManualToken;
 
-        if (options.parents) this.#attachTo(options.parents);
+        let parents, name, parent = options.parent;
+        const userOptions = options.options;
+
+        if (userOptions) {
+            if (typeof userOptions === 'string') name = userOptions;
+            else if (Array.isArray(userOptions)) parents = userOptions;
+            else if (typeof userOptions === 'object') {
+                if (userOptions.name) name = userOptions.name;
+                if (userOptions.parents) parents = userOptions.parents; 
+            }
+        }
+
+        if (parent) this.#attachTo(parent);
+        if (parents) this.#attachTo(parents);
+        if (name !== undefined) this.#name = name;
 
         if (this.#type === ManualToken) {
         } else if (this.#type === TimeoutToken) {
@@ -149,13 +169,16 @@ class CancellationToken extends EventEmitter {
         return promise;
     }
 
+    #listenProxy(error) {
+        this.#cancel(this, error);
+    }
+
     #subscribeEvent() {
-        this.#createListener();
-        EventProxy.once(this.#eventEmitter, this.#eventName, this.ref, this.#cancel);
+        this.#proxyListener = EventProxy.once(this.#eventEmitter, this.#eventName, this.ref, this.#listenProxy);
     }
 
     #unsubscribeEvent() {
-        this.#eventEmitter.off(this.#eventName, this.#listener);
+        if (this.#proxyListener) EventProxy.off(this.#proxyListener);
     }
 
     #startTimer(timeout) {
@@ -197,28 +220,44 @@ class CancellationToken extends EventEmitter {
     }
 
     #attachTo(parents) {
+        if (!parents) return;
         let isMap = this.#parents instanceof Map, ref;
+        let count, parent, i = 0;
 
-        for (let parent of parents) {
+        if (Array.isArray(parents)) {
+            count = parents.length;
+            parent = parents[0];
+            if (count === 0) return;
+        } else {
+            count = 1;
+            parent = parents;
+        }
+
+        while (true) {
             if (parent !== null && !(parent instanceof CancellationToken)) throw new Error('Invalid parent ' + parent);
-            if (!parent) continue;
-
-            if (!isMap && this.#parents && this.#parents[0] !== parent) {
-                this.#parents = new Map([this.#parents]);
-                isMap = true;
-            }
-
-            if (isMap ? !this.#parents.has(parent) : !this.#parents || this.#parents[0] !== parent) {
-                let sub = null;
-                if (!this.#cancelled) {
-                    if (parent.cancelled) this.#cancel(parent.cancelledBy);
-                    else {
-                        ref = ref || this.ref;
-                        sub = EventProxy.once(parent, 'cancel', ref, this.#cancel);
-                    }
+            
+            if (parent) {
+                if (!isMap && this.#parents && this.#parents[0] !== parent) {
+                    this.#parents = new Map([this.#parents]);
+                    isMap = true;
                 }
-                isMap ? this.#parents.set(parent, sub) : (this.#parents = [parent, sub]);
+
+                if (isMap ? !this.#parents.has(parent) : !this.#parents || this.#parents[0] !== parent) {
+                    let sub = null;
+                    if (!this.#cancelled) {
+                        if (parent.cancelled) this.#cancel(parent.cancelledBy);
+                        else {
+                            ref = ref || this.ref;
+                            sub = EventProxy.once(parent, 'cancel', ref, this.#cancel);
+                        }
+                    }
+                    isMap ? this.#parents.set(parent, sub) : (this.#parents = [parent, sub]);
+                }
             }
+
+            i++;
+            if (i >= count) break;
+            parent = parents[i];
         }
     }
 
@@ -392,21 +431,11 @@ class CancellationToken extends EventEmitter {
     }
 
     static async catchCancelError(promise) {
-        try {
-            return await promise;
-        } catch (error) {
-            if (error instanceof CancellationEventError) return error.token;
-            else throw error;
-        }
+        return promise.then(value => value, error => { if (error instanceof CancellationEventError) return error.token; else throw error });
     }
 
     async catchCancelError(promise) {
-        try {
-            return await promise;
-        } catch (error) {
-            if (error instanceof CancellationEventError) return error.token;
-            else throw error;
-        }
+        return promise.then(value => value, error => { if (error instanceof CancellationEventError) return error.token; else throw error });
     }
 
     throwIfCancelled() {
@@ -428,6 +457,11 @@ class CancellationToken extends EventEmitter {
     get type() {
         return this.#type;
     }
+
+    get name() {
+        return this.#name;
+    }
 }
 
 export default CancellationToken;
+export { CancellationEventError, RaceError, RaceResult, EventProxy, sleep };

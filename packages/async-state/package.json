@@ -1,0 +1,31 @@
+{
+    "name": "@async-cancellables/async-state",
+    "version": "1.1.0",
+    "description": "Asynchronous state with CancellationToken support",
+    "main": "index.js",
+    "type": "module",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/vuwuv/async-cancellables.git",
+        "directory": "packages/async-state"
+    },
+    "keywords": [
+        "async",
+        "cancellable",
+        "AsyncState",
+        "CancellationToken",
+        "cancellation"
+    ],
+    "author": "vuwuv",
+    "license": "MIT",
+    "bugs": {
+        "url": "https://github.com/vuwuv/async-cancellables/issues"
+    },
+    "homepage": "https://github.com/vuwuv/async-cancellables#readme",
+    "dependencies": {
+        "@async-cancellables/ct": ">=1.1.0"
+    },
+    "engines": {
+      "node": ">=18.0.0"
+    }
+}

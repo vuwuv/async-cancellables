@@ -1,4 +1,4 @@
-import EventProxy from './eventProxy.js';
+import { EventProxy } from '@async-cancellables/ct';
 
 const ManualState = 1;
 const EventState = 2;

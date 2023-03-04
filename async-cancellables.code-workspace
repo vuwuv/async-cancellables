@@ -1,0 +1,35 @@
+{
+    "folders": [
+        {
+            "path": "."
+        }
+    ],
+    "settings": {},
+    "launch": {
+        "version": "0.2.0",
+        "configurations": [
+            {
+                "name": "Debug tests single run",
+                "type": "node",
+                "request": "launch",
+                "env": { "CI": "true", "NODE_OPTIONS": "--experimental-vm-modules" },
+                "program": "${workspaceRoot}/node_modules/jest/bin/jest.js",
+                "args": ["--verbose", "-i", "--no-cache"],
+                "cwd": "${workspaceRoot}",
+                //"protocol": "inspector",
+                "console": "integratedTerminal",
+                "internalConsoleOptions": "neverOpen"
+            },
+            {
+                "console": "integratedTerminal",
+                "type": "node",
+                "request": "launch",
+                "name": "Launch Test",
+                "skipFiles": ["<node_internals>/**"],
+                "program": "${workspaceFolder}/test.js",
+                "args": [],
+                "env": {}
+            },
+        ]
+    }
+}
