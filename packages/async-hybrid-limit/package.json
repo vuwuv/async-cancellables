@@ -1,7 +1,7 @@
 {
     "name": "@async-cancellables/async-hybrid-limit",
     "version": "2.0.0",
-    "description": "Asynchronous lock pool with priorities and CancellationToken support",
+    "description": "Asynchronous lock pool with priority and cancellation support",
     "main": "index.js",
     "type": "module",
     "repository": {

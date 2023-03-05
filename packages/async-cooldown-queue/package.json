@@ -1,7 +1,7 @@
 {
     "name": "@async-cancellables/async-cooldown-queue",
     "version": "2.0.0",
-    "description": "Asynchronous cooldown queue and CancellationToken support",
+    "description": "Asynchronous cooldown queue and cancellation support",
     "main": "index.js",
     "type": "module",
     "repository": {
@@ -14,7 +14,6 @@
     	"cancellable",
         "AsyncCooldownQueue",
         "cooldown",
-        "CancellationToken",
         "cancellation"
     ],
     "author": "vuwuv",

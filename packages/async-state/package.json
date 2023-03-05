@@ -1,7 +1,7 @@
 {
     "name": "@async-cancellables/async-state",
     "version": "2.0.0",
-    "description": "Asynchronous state with CancellationToken support",
+    "description": "Asynchronous state with cancellation support",
     "main": "index.js",
     "type": "module",
     "repository": {
@@ -13,7 +13,6 @@
         "async",
         "cancellable",
         "AsyncState",
-        "CancellationToken",
         "cancellation"
     ],
     "author": "vuwuv",

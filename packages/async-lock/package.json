@@ -1,7 +1,7 @@
 {
     "name": "@async-cancellables/async-lock",
     "version": "2.0.0",
-    "description": "Asynchronous lock pool with priorities and CancellationToken support",
+    "description": "Asynchronous lock pool with priorities and cancellation support",
     "main": "index.js",
     "type": "module",
     "repository": {
@@ -13,8 +13,8 @@
         "async",
     	"cancellable",
         "AsyncLock",
-        "CancellationToken",
-        "cancellation"
+        "cancellation",
+        "lock"
     ],
     "author": "vuwuv",
     "license": "MIT",

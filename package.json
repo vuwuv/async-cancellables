@@ -1,6 +1,6 @@
 {
     "name": "@async-cancellables/monorepo",
-    "version": "1.1.0",
+    "version": "2.0.0",
     "description": "Helper classes for async/await",
     "main": "index.js",
     "type": "module",
@@ -19,7 +19,6 @@
     },
     "homepage": "https://github.com/vuwuv/async-cancellables#readme",
     "devDependencies": {
-        "eventemitter2": "^6.4.9",
         "jest": "^29.3.1"
     },
     "workspaces": [
