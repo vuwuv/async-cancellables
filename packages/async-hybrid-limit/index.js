@@ -254,7 +254,7 @@ class AsyncHybridLimit {
     async #exitQueue(waiter) {
         let next = waiter[1];
         this.#remove(1, waiter);
-        if (waiter[2] > waiter[7]) {
+        if (next && waiter[2] > waiter[7]) {
             this.#ootStartSlot = null;
             let max = next[0] ? Math.max(next[0][2], next[0][7]) : 0;
             while (next && next[7] === waiter[2]) {

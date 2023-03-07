@@ -6,15 +6,19 @@ const ManualToken = 1;
 const TimeoutToken = 2;
 const EventToken = 3;
 
-function RaceResult(result, index) {
-    this.result = result;
-    this.index = index;
-    Object.freeze(this);
+class RaceSuccess {
+    static create(index, value) {
+        return new RaceSuccess(value, index);
+    }
+
+    constructor(value, index) {
+        this.value = value;
+        this.index = index;
+        Object.freeze(this);
+    }
 }
 
-function createRaceResult(index, result) {
-    return new RaceResult(result, index);
-}
+Object.defineProperty(RaceSuccess, "result", { enumerable: false, get: function() { return this.value; } });
 
 class RaceError extends Error {
     constructor(error, index) {
@@ -358,18 +362,17 @@ class CancellationToken extends EventEmitter {
         });
     }
 
-    async race(promiseListGenerator, doNotThrow = false) {
+    static async #race(cancelPromise, promiseListGenerator, doNotThrow = false) {
         let result, token;
 
         try {
             token = this.manual();
 
             const promises = promiseListGenerator(token).map((promise, index) =>
-                promise.then(createRaceResult.bind(null, index), createRaceError.bind(null, index))
+                promise.then(RaceSuccess.create.bind(null, index), createRaceError.bind(null, index))
             );
 
-            const cancelPromise = this.#createCancelPromise(1);
-            promises.unshift(cancelPromise[0]);
+            if (cancelPromise) promises.unshift(cancelPromise);
 
             result = await Promise.race(promises);
         } 
@@ -385,19 +388,18 @@ class CancellationToken extends EventEmitter {
         return result;
     }
 
-    async any(promiseListGenerator, doNotThrow = false) {
+    static async #any(cancelPromise, promiseListGenerator, doNotThrow = false) {
         let result, token;
 
         try {
             token = this.manual();
 
             const promises = promiseListGenerator(token).map((promise, index) =>
-                promise.then(createRaceResult.bind(null, index))
+                promise.then(RaceSuccess.create.bind(null, index))
             );
 
-            const cancelPromise = this.#createCancelPromise(1);
-
-            result = await Promise.race([cancelPromise[0], Promise.any(promises)]);
+            if (cancelPromise) result = await Promise.race([cancelPromise, Promise.any(promises)]);
+            else result = await Promise.any(promises);
         }   
         catch (error) {
             if (doNotThrow && error instanceof CancellationEventError) result = error.token;
@@ -408,6 +410,28 @@ class CancellationToken extends EventEmitter {
         }
 
         return result;
+    }
+
+    static async race(promiseListGenerator, doNotThrow = false) {
+        return CancellationToken.#race(null, promiseListGenerator, doNotThrow);
+    }
+
+    static async any(promiseListGenerator, doNotThrow = false) {
+        return CancellationToken.#any(null, promiseListGenerator, doNotThrow);
+    }
+
+    async race(promiseListGenerator, doNotThrow = false) {
+        if (!doNotThrow) this.throwIfCancelled();
+        else if (this.#cancelled) return this.#cancelledBy;
+        const cancelPromise = this.#createCancelPromise(1)[0];
+        return CancellationToken.#race(cancelPromise, promiseListGenerator, doNotThrow);
+    }
+
+    async any(promiseListGenerator, doNotThrow = false) {
+        if (!doNotThrow) this.throwIfCancelled();
+        else if (this.#cancelled) return this.#cancelledBy;
+        const cancelPromise = this.#createCancelPromise(1)[0];
+        return CancellationToken.#any(cancelPromise, promiseListGenerator, doNotThrow);
     }
 
     isToken(token) {
@@ -464,4 +488,4 @@ class CancellationToken extends EventEmitter {
 }
 
 export default CancellationToken;
-export { CancellationEventError, RaceError, RaceResult, EventProxy, sleep };
+export { CancellationEventError, RaceError, RaceSuccess, EventProxy, sleep };

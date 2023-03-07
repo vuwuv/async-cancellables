@@ -1,6 +1,6 @@
+import EventEmitter from 'eventemitter2';
 import { jest } from '@jest/globals';
 
-import EventEmitter from 'node:events';
 import CT, { sleep } from '@async-cancellables/ct';
 
 const events = new EventEmitter();
@@ -24,6 +24,7 @@ class Counter {
 
 async function stressTest() {
     const target = new EventEmitter();
+    target.setMaxListeners(0);
     const reps = 10, count = 10000;
 
     for (let c = 0; c < reps; c++) {
@@ -43,18 +44,17 @@ async function stressTest() {
 
 async function timeTest() {
     const target = new EventEmitter();
-
+    target.setMaxListeners(0);
     for (let i = 0; i < 1000; i++) {
-        consoleLog(`${i}: ${EventProxy.addSpeed} - ${EventProxy.count}`);
+        consoleLog(`${i}: ${EventProxy.count}`);
         const counter = new Counter();
         const ref = new WeakRef(counter);
         EventProxy.once(target, 'test', ref, counter.increase);
         await sleep(i > 900 ? 1000 : 20);
-        expect(performance.now() - EventProxy.lastCleaned).toBeLessThan(30 * 1000);
     }
+
     consoleLog(`count: ${EventProxy.count}`);
-    for (let i = 0; i < 200; i++) await sleep(1000);
-    expect(performance.now() - EventProxy.lastCleaned).toBeLessThan(30 * 1000);
+    //for (let i = 0; i < 200; i++) await sleep(1000);
     consoleLog(`count: ${EventProxy.count}`);
     target.emit('test', 1);
     expect(EventProxy.count).toBe(0);

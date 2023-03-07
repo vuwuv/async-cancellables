@@ -1,6 +1,6 @@
 {
     "name": "@async-cancellables/async-hybrid-limit",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "description": "Asynchronous lock pool with priority and cancellation support",
     "main": "index.js",
     "type": "module",
@@ -22,7 +22,7 @@
     },
     "homepage": "https://github.com/vuwuv/async-cancellables#readme",
     "peerDependencies": {
-        "@async-cancellables/ct": "^2.0.0"
+        "@async-cancellables/ct": "^2.1.0"
     },
     "engines": {
         "node": ">=18.0.0"

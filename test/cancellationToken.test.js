@@ -31,6 +31,51 @@ class Events extends EventEmitter {
     }
 }
 
+class TrackedSleep {
+    #called = 0;
+    #finished = 0;
+    #sleepBound = this.#sleep.bind(this);
+
+    async #sleep(token, time, result, error = false, doNotThrow = false) {
+        this.#called++;
+        let isCancellationError = false;
+        try {
+            if (error) {
+                await token.sleep(time, result, doNotThrow);
+                throw new Error(result);
+            }
+            else {
+                const returned = await token.sleep(time, result, doNotThrow);
+                if (CT.isToken(returned)) isCancellationError = true;
+                return returned;
+            }
+        }
+        catch (error) {
+            if (CT.isCancellationError(error)) isCancellationError = true;
+            throw error;
+        }
+        finally {
+            if (!isCancellationError) this.#finished++;
+        }
+    }
+
+    get sleep() {
+        return this.#sleepBound;
+    }
+
+    get calledReset() {
+        const called = this.#called;
+        this.#called = 0;
+        return called;
+    }
+
+    get finishedReset() {
+        const finished = this.#finished;
+        this.#finished = 0;
+        return finished;
+    }
+}
+
 function arraysRemoveDimensions(...arrays) {
     const array = arrays.shift() || [];
     const rest = arrays.length ? arraysRemoveDimensions(...arrays) : [[]];
@@ -521,33 +566,103 @@ describe('CancellationToken', () => {
     });
 
     it('race', async () => {
-        await expect(CT.timeout(5).race((token) => [token.sleep(20), token.sleep(25)])).rejects.toThrow('Async call cancelled');
-        await expect(CT.timeout(5).race((token) => [token.sleep(5), token.sleep(5)])).rejects.toThrow('Async call cancelled');
-        await expect(CT.manual().race((token) => [sleepError(2), sleepError(5)])).rejects.toThrow('Race indexed error');
-        await expect(CT.timeout(20).race((token) => [token.sleep(7, 1), token.sleep(5, 2)])).resolves.toEqual({ index: 1, result: 2 });
+        const tracked = new TrackedSleep();
+        //sleep(token, time, result, error = false, doNotThrow = false)
+        await expect(CT.manual().cancel().race((token) => [tracked.sleep(token, 5), tracked.sleep(token, 5)])).rejects.toThrow('Async call cancelled');
+        expect(tracked.calledReset).toBe(0);
+        await expect(CT.timeout(5).race((token) => [tracked.sleep(token, 20), tracked.sleep(token, 25)])).rejects.toThrow('Async call cancelled');
+        expect(tracked.finishedReset).toBe(0);
+        await expect(CT.timeout(5).race((token) => [tracked.sleep(token, 5), tracked.sleep(token, 5)])).rejects.toThrow('Async call cancelled');
+        expect(tracked.finishedReset).toBe(0);
+        await expect(CT.manual().race((token) => [tracked.sleep(token, 2, 'error', true), tracked.sleep(token, 5, 'error', true)])).rejects.toThrow('Race indexed error');
+        expect(tracked.finishedReset).toBe(1);
+        await expect(CT.timeout(20).race((token) => [tracked.sleep(token, 7, 1), tracked.sleep(token, 5, 2)])).resolves.toEqual({ index: 1, value: 2 });
+        expect(tracked.finishedReset).toBe(1);
 
-        await expect(CT.timeout(5).race((token) => [token.sleep(20), token.sleep(25)], true)).resolves.toBeInstanceOf(CT);
-        await expect(CT.timeout(5).race((token) => [token.sleep(5), token.sleep(6)], true)).resolves.toBeInstanceOf(CT);
-        await expect(CT.manual().race((token) => [sleepError(2), sleepError(5)], true)).rejects.toThrow('Race indexed error');
-        await expect(CT.timeout(20).race((token) => [token.sleep(7, 1), token.sleep(5, 2)], true)).resolves.toEqual({ index: 1, result: 2 });
+        tracked.calledReset;
 
-        await expect(CT.timeout(10).race((token) => [token.timeout(5).sleep(10), token.timeout(6).sleep(10)])).rejects.toThrow('Race indexed error');
-        await expect(CT.timeout(10).race((token) => [token.timeout(5).sleep(10, true, true), token.timeout(6).sleep(10, true, true)])).resolves.toHaveProperty('index', 0);
+        await expect(CT.manual().cancel().race((token) => [tracked.sleep(token, 5), tracked.sleep(token, 5)], true)).resolves.toBeInstanceOf(CT);
+        expect(tracked.calledReset).toBe(0);
+        await expect(CT.timeout(5).race((token) => [tracked.sleep(token, 20), tracked.sleep(token, 25)], true)).resolves.toBeInstanceOf(CT);
+        expect(tracked.finishedReset).toBe(0);
+        await expect(CT.timeout(5).race((token) => [tracked.sleep(token, 5), tracked.sleep(token, 6)], true)).resolves.toBeInstanceOf(CT);
+        expect(tracked.finishedReset).toBe(0);
+        await expect(CT.manual().race((token) => [tracked.sleep(token, 2, 'error', true), tracked.sleep(token, 5, 'error', true)], true)).rejects.toThrow('Race indexed error');
+        expect(tracked.finishedReset).toBe(1);
+        await expect(CT.timeout(20).race((token) => [tracked.sleep(token, 7, 1), tracked.sleep(token, 5, 2)], true)).resolves.toEqual({ index: 1, value: 2 });
+        expect(tracked.finishedReset).toBe(1);
+
+        await expect(CT.timeout(10).race((token) => [tracked.sleep(token.timeout(5), 10), tracked.sleep(token.timeout(6), 10)], true)).rejects.toThrow('Race indexed error');
+        expect(tracked.finishedReset).toBe(0);
+        await expect(CT.timeout(10).race((token) => [tracked.sleep(token.timeout(5), 10, true, false, true), tracked.sleep(token.timeout(6), 10, true, false, true)], true)).resolves.toHaveProperty('index', 0);
+        expect(tracked.finishedReset).toBe(0);
     });
 
     it('any', async () => {
-        await expect(CT.timeout(5).any((token) => [token.sleep(20), token.sleep(25)])).rejects.toThrow('Async call cancelled');
-        await expect(CT.timeout(5).any((token) => [token.sleep(5), token.sleep(5)])).rejects.toThrow('Async call cancelled');
-        await expect(CT.manual().any((token) => [sleepError(2), sleepError(5)])).rejects.toThrow(AggregateError);
-        await expect(CT.timeout(20).any((token) => [token.sleep(7, 1), token.sleep(5, 2)])).resolves.toEqual({ index: 1, result: 2 });
+        const tracked = new TrackedSleep();
+        //sleep(token, time, result, error = false, doNotThrow = false)
+        await expect(CT.manual().cancel().any((token) => [tracked.sleep(token, 5), tracked.sleep(token, 5)])).rejects.toThrow('Async call cancelled');
+        expect(tracked.calledReset).toBe(0);
+        await expect(CT.timeout(5).any((token) => [tracked.sleep(token, 20), tracked.sleep(token, 25)])).rejects.toThrow('Async call cancelled');
+        expect(tracked.finishedReset).toBe(0);
+        await expect(CT.timeout(5).any((token) => [tracked.sleep(token, 5), tracked.sleep(token, 5)])).rejects.toThrow('Async call cancelled');
+        expect(tracked.finishedReset).toBe(0);
+        await expect(CT.manual().any((token) => [tracked.sleep(token, 2, 'error', true), tracked.sleep(token, 5, 'error', true)])).rejects.toThrow(AggregateError);
+        expect(tracked.finishedReset).toBe(2);
+        await expect(CT.timeout(20).any((token) => [tracked.sleep(token, 7, 1), tracked.sleep(token, 5, 2)])).resolves.toEqual({ index: 1, value: 2 });
+        expect(tracked.finishedReset).toBe(1);
 
-        await expect(CT.timeout(5).any((token) => [token.sleep(20), token.sleep(25)], true)).resolves.toBeInstanceOf(CT);
-        await expect(CT.timeout(5).any((token) => [token.sleep(5), token.sleep(6)], true)).resolves.toBeInstanceOf(CT);
-        await expect(CT.manual().any((token) => [sleepError(2), sleep(5, 2)], true)).resolves.toEqual({ index: 1, result: 2 });
-        await expect(CT.timeout(20).any((token) => [token.sleep(7, 1), token.sleep(5, 2)], true)).resolves.toEqual({ index: 1, result: 2 });
+        tracked.calledReset;
 
-        await expect(CT.timeout(10).any((token) => [token.timeout(5).sleep(10), token.timeout(6).sleep(10)])).rejects.toThrow(AggregateError);
-        await expect(CT.timeout(10).any((token) => [token.timeout(5).sleep(10, true, true), token.timeout(6).sleep(10, true, true)])).resolves.toHaveProperty('index', 0)
+        await expect(CT.manual().cancel().any((token) => [tracked.sleep(token, 5), tracked.sleep(token, 5)], true)).resolves.toBeInstanceOf(CT);
+        expect(tracked.calledReset).toBe(0);
+        await expect(CT.timeout(5).any((token) => [tracked.sleep(token, 20), tracked.sleep(token, 25)], true)).resolves.toBeInstanceOf(CT);
+        expect(tracked.finishedReset).toBe(0);
+        await expect(CT.timeout(5).any((token) => [tracked.sleep(token, 5), tracked.sleep(token, 6)], true)).resolves.toBeInstanceOf(CT);
+        expect(tracked.finishedReset).toBe(0);
+        await expect(CT.manual().any((token) => [tracked.sleep(token, 2, 1, true), tracked.sleep(token, 5, 2)], true)).resolves.toEqual({ index: 1, value: 2 });
+        expect(tracked.finishedReset).toBe(2);
+        await expect(CT.timeout(20).any((token) => [tracked.sleep(token, 7, 1), tracked.sleep(token, 5, 2)], true)).resolves.toEqual({ index: 1, value: 2 });
+        expect(tracked.finishedReset).toBe(1);
+
+        await expect(CT.timeout(10).any((token) => [tracked.sleep(token.timeout(5), 10), tracked.sleep(token.timeout(6), 10)], true)).rejects.toThrow(AggregateError);
+        expect(tracked.finishedReset).toBe(0);
+        await expect(CT.timeout(10).any((token) => [tracked.sleep(token.timeout(5), 10, true, false, true), tracked.sleep(token.timeout(6), 10, true, false, true)], true)).resolves.toHaveProperty('index', 0);
+        expect(tracked.finishedReset).toBe(0);
+    });
+
+    it('static race', async () => {
+        const tracked = new TrackedSleep();
+        //sleep(token, time, result, error = false, doNotThrow = false)
+        await expect(CT.race((token) => [tracked.sleep(token, 2, 'error', true), tracked.sleep(token, 5, 'error', true)])).rejects.toThrow('Race indexed error');
+        expect(tracked.finishedReset).toBe(1);
+        await expect(CT.race((token) => [tracked.sleep(token, 7, 1), tracked.sleep(token, 5, 2)])).resolves.toEqual({ index: 1, value: 2 });
+        expect(tracked.finishedReset).toBe(1);
+        await expect(CT.race((token) => [tracked.sleep(token, 2, 'error', true), tracked.sleep(token, 5, 'error', true)], true)).rejects.toThrow('Race indexed error');
+        expect(tracked.finishedReset).toBe(1);
+        await expect(CT.race((token) => [tracked.sleep(token, 7, 1), tracked.sleep(token, 5, 2)], true)).resolves.toEqual({ index: 1, value: 2 });
+        expect(tracked.finishedReset).toBe(1);
+        await expect(CT.race((token) => [tracked.sleep(token.timeout(5), 10), tracked.sleep(token.timeout(6), 10)], true)).rejects.toThrow('Race indexed error');
+        expect(tracked.finishedReset).toBe(0);
+        await expect(CT.race((token) => [tracked.sleep(token.timeout(5), 10, true, false, true), tracked.sleep(token.timeout(6), 10, true, false, true)], true)).resolves.toHaveProperty('index', 0);
+        expect(tracked.finishedReset).toBe(0);
+    });
+
+    it('static any', async () => {
+        const tracked = new TrackedSleep();
+        //sleep(token, time, result, error = false, doNotThrow = false)
+        await expect(CT.any((token) => [tracked.sleep(token, 2, 'error', true), tracked.sleep(token, 5, 'error', true)])).rejects.toThrow(AggregateError);
+        expect(tracked.finishedReset).toBe(2);
+        await expect(CT.any((token) => [tracked.sleep(token, 7, 1), tracked.sleep(token, 5, 2)])).resolves.toEqual({ index: 1, value: 2 });
+        expect(tracked.finishedReset).toBe(1);
+        await expect(CT.any((token) => [tracked.sleep(token, 2, 1, true), tracked.sleep(token, 5, 2)], true)).resolves.toEqual({ index: 1, value: 2 });
+        expect(tracked.finishedReset).toBe(2);
+        await expect(CT.any((token) => [tracked.sleep(token, 7, 1), tracked.sleep(token, 5, 2)], true)).resolves.toEqual({ index: 1, value: 2 });
+        expect(tracked.finishedReset).toBe(1);
+        await expect(CT.any((token) => [tracked.sleep(token.timeout(5), 10), tracked.sleep(token.timeout(6), 10)], true)).rejects.toThrow(AggregateError);
+        expect(tracked.finishedReset).toBe(0);
+        await expect(CT.any((token) => [tracked.sleep(token.timeout(5), 10, true, false, true), tracked.sleep(token.timeout(6), 10, true, false, true)], true)).resolves.toHaveProperty('index', 0);
+        expect(tracked.finishedReset).toBe(0);
     });
 
     it('processCancel', async () => {

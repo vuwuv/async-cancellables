@@ -10,10 +10,11 @@
   - [Installation](#installation)
   - [API](#api)
   - [Examples](#examples)
-    - [Simple await with timeout](#simple-await-with-timeout)
-    - [File download function limiting concurrent downloads](#file-download-function-limiting-concurrent-downloads)
-    - [Cancellable async calls via socket](#cancellable-async-calls-via-socket)
-    - [Cancellable sleep promise](#cancellable-sleep-promise)
+    -   [Basic usage](#basic-usage)
+    -   [Using improved race/any methods](#using-improved-raceany-methods)
+    -   [File download function limiting concurrent downloads](#file-download-function-limiting-concurrent-downloads)
+    -   [Cancellable async calls via socket](#cancellable-async-calls-via-socket)
+    -   [Cancellable sleep promise](#cancellable-sleep-promise)
   - [Authors](#authors)
   - [License](#license)
 
@@ -44,13 +45,65 @@ The rest of the classes should be installed separately
 
 ## Examples
 
-### Simple await with timeout
+### Basic usage
+
+Creating independent cancellation tokens:
 
 ```js
-CT.timeout(5000).waitPromise(asyncCall());
+// cancelled manually by calling parent1.cancel()
+const parent1 = CT.manual();
+
+// cancelled after 5 seconds
+const parent2 = CT.timeout(5000);
+
+// cancelled when 'event' event is emitted on target
+const parent3 = CT.event(target, 'event');
 ```
 
-Waits for `asyncCall()` to finish, but throws an error it if it takes more than 5 seconds. The call itself is not cancelled, it will continue to run in the background.
+Creating child cancellation tokens:
+
+```js
+// cancelled after 10 seconds or when parent1 is cancelled (manually)
+const child1 = parent1.timeout(10000);
+
+// cancelled when 'event' event is emitted on target or when parent2 is cancelled (after 5 seconds)
+const child2 = parent2.event(target, 'event');
+
+// cancelled manually by calling child3.cancel() or when parent3 is cancelled (when 'event' event is emitted on target)
+const child3 = parent3.manual();
+```
+
+Using tokens:
+
+```js
+const token = CT.manual();
+
+// waits for asyncCall() to finish, but throws an error if token is cancelled
+const asyncCallResult = await token.waitPromise(asyncCall());
+
+// waits for target.event event to be emitted, but throws an error if token is cancelled, returns array of event arguments
+const eventArgumentsArray = await token.waitEvent(target, 'event');
+
+// waits for 10 seconds, but throws an error if token is cancelled
+await token.sleep(10000);
+```
+
+### Using improved race/any methods
+
+```js
+// every lock imitates remote resource
+const locks = [new AsyncLock(1), new AsyncLock(1), new AsyncLock(1)];
+
+// waits for the first lock to be available, cancels waiting for other locks
+const waitSuccess = await CT.any(locks.map((lock) => lock.waitOne()));
+
+// it's possible to wait with a timeout
+const waitSuccess = await CT.timeout(5000).any(locks.map((lock) => lock.waitOne()));
+
+// waitSuccess contains index of the lock and the ticket
+const index = waitSuccess.index;
+const ticket = waitSuccess.value;
+```
 
 ### File download function limiting concurrent downloads
 

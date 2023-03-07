@@ -18,7 +18,7 @@
                 "cwd": "${workspaceRoot}",
                 //"protocol": "inspector",
                 "console": "integratedTerminal",
-                "internalConsoleOptions": "neverOpen"
+                "internalConsoleOptions": "neverOpen",
             },
             {
                 "console": "integratedTerminal",
@@ -28,7 +28,7 @@
                 "skipFiles": ["<node_internals>/**"],
                 "program": "${workspaceFolder}/test.js",
                 "args": [],
-                "env": {}
+                "env": {},
             },
         ]
     }

@@ -397,6 +397,20 @@ describe('AsyncHybridLimit', () => {
             tickets = await promiseCheck(promises);
             expect(tickets).toPartiallyResolve([1, 2, 1]);
             tickets[2].release();
+
+            token = CT.manual();
+
+            promises = [
+                limit.wait(1, 1),
+                CT.catchCancelError(limit.wait(1, 1, token)),
+            ];
+
+            tickets = await promiseCheck(promises);
+            expect(tickets).toPartiallyResolve([1, 0]);
+            token.cancel();
+            tickets = await promiseCheck(promises);
+            expect(tickets).toPartiallyResolve([1, 2]);
+            tickets[0].release();
         });
 
         it('cancellation order', async () => {
