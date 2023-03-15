@@ -19,7 +19,7 @@
     -   [Static wait methods](#static-wait-methods)
     -   [Cancel methods](#cancel-methods)
     -   [Properties](#properties)
-    -   [Utility properties and methods](#utility-properties-and-methods)
+    -   [Utility methods](#utility-methods)
     -   [Static utility methods](#static-utility-methods)
     -   [Race methods](#race-methods)
     -   [Events](#events)
@@ -181,7 +181,8 @@ Options can be:
 
 -   `parents` - array of parents which can contain `null` or duplicate values that are ignored for convenience reasons
 -   `name` - string name of the token, used for debugging or analysis purposes
--   `options` - options object containing `name`, `parents`
+-   `createError` - function that creates error object when token is cancelled instead of default `CancellationTokenError`
+-   `options` - options object containing `name`, `parents`, `createError`
 
 You can also add/remove additional parents to existing tokens via `attachTo` and `detachFrom` methods
 
@@ -212,22 +213,22 @@ CancellationToken token has the same static wait methods, except they have addit
 
 ### Cancel methods
 
--   `cancel(error = null)` cancels any (not just manual) token immediately and returns `this`, `error` can contain custom user error information
+-   `cancel()` cancels any (not just manual) token immediately and returns `this`
 
 ### Properties
 
 -   `name` returns token name or `null` if not specified
 -   `cancelled` returns `true` if token is cancelled
--   `cancelledError` returns custom user error information optionally specified at `cancel()` method
+-   `cancelledBy` if cancelled returns token that cancelled, `null` otherwise
+-   `cancelledError` returns error object that was used to cancel token or `null` if token is not cancelled
 -   `isManual` returns `true` if token has `manual` type
 -   `isTimeout` returns `true` if token has `timeout` type
 -   `isEvent` returns `true` if token has `event` type
 -   `isCancellationToken` always returns `true`
 
-### Utility properties and methods
+### Utility methods
 
 -   `isToken(object)` checks if the `object` is a cancellation token
--   `cancelledBy` if cancelled returns token that cancelled, `null` otherwise
 -   `throwIfCancelled()` if cancelled throws cancel error
 -   `catchCancelError(promise)` awaits the promise and returns it's result, if cancel error is thrown returns cancelled token, rethrows any other error
 -   `processCancel(resolve, reject, cancel, doNotThrow = false)` when token is cancelled calls `cancel` and then `resolve` or `reject` depending on `doNotThrow` value and returns array of rewritten `resolve` and `reject` functions to be used

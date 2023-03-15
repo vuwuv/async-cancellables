@@ -1,5 +1,5 @@
 import EventEmitter from 'events';
-import CT from '@async-cancellables/ct';
+import CT, { CancellationEventError } from '@async-cancellables/ct';
 
 const sleep = CT.sleep;
 
@@ -113,24 +113,60 @@ describe('CancellationToken', () => {
         events.clear();
         const timeout = 7;
         let token = name === 'timeout' ? CT.timeout(timeout) : name === 'manual' ? CT.manual() : CT.event(events, 'test');
-        const error = new Error('fire');
-        events.timer(timeout, 'test', error);
+        events.timer(timeout, 'test');
         if (name === 'manual') setTimeout(() => token.cancel(), timeout);
         await expect(token.wait(sleep(15))).rejects.toThrow();
         expect(token.cancelledBy).toBe(token);
-        if (name === 'event') expect(token.cancelledError).toBe(error);
     });
 
-    it.each([['timeout'], ['manual'], ['event']])('cancel error token %p', async (name) => {
-        events.clear();
+    it.each(setNames(arraysRemoveDimensions(['timeout', 'manual', 'event'], ['options', 'simple'])))(
+        'cancelError %j', async (name, tokenType, initType) => {
+        const createError = (token) => new Error('custom error');
         const timeout = 7;
-        let token = name === 'timeout' ? CT.timeout(timeout) : name === 'manual' ? CT.manual() : CT.event(events, 'test');
-        let error = new Error('test error');
-        token.cancel(error);
-        await sleep(10);
-        await expect(token.wait(sleep(15))).rejects.toThrow();
-        await expect(token.wait(sleep(15), true)).resolves.toBe(token);
-        expect(token.cancelledError).toBe(error);
+        const options = initType === 'options' ? { createError } : createError;
+
+        // parent with customError cancelled first
+        events.clear();
+        let parent = tokenType === 'timeout' ? CT.timeout(timeout, options) : tokenType === 'manual' ? CT.manual(options) : CT.event(events, 'test', options);
+        let token = parent.manual();
+        events.timer(timeout, 'test');
+        if (tokenType === 'manual') setTimeout(() => parent.cancel(), timeout);
+        await expect(token.wait(sleep(15))).rejects.toThrow("custom error");
+        expect(token.cancelledError).toBeInstanceOf(Error);
+        expect(parent.cancelledError).toBeInstanceOf(Error);
+
+        // child with customError, parent cancelled first
+        events.clear();
+        parent = CT.manual();
+        token = tokenType === 'timeout' ? parent.timeout(timeout, options) : tokenType === 'manual' ? parent.manual(options) : parent.event(events, 'test', options);
+        events.timer(timeout, 'test');
+        setTimeout(() => parent.cancel(), 2);
+        await expect(token.wait(sleep(15))).rejects.toThrow("Async call cancelled");
+        expect(token.cancelledError).toBeInstanceOf(CancellationEventError);
+        expect(parent.cancelledError).toBeInstanceOf(CancellationEventError);
+
+        // parent with customError, child cancelled first
+        events.clear();
+        parent = tokenType === 'timeout' ? CT.timeout(timeout, options) : tokenType === 'manual' ? CT.manual(options) : CT.event(events, 'test', options);
+        token = parent.manual();
+        events.timer(timeout, 'test');
+        if (tokenType === 'manual') setTimeout(() => parent.cancel(), timeout);
+        token.cancel();
+        await expect(token.wait(sleep(15))).rejects.toThrow("Async call cancelled");
+        expect(token.cancelledError).toBeInstanceOf(CancellationEventError);
+        await sleep(timeout);
+        expect(parent.cancelledError).toBeInstanceOf(Error);
+        expect(token.cancelledError).toBeInstanceOf(CancellationEventError);
+        expect(token.cancelledBy).toBe(token);
+        expect(parent.cancelledBy).toBe(parent);
+    });
+
+    it.each([['timeout'], ['manual'], ['event']])('%p cancelError from cancelled token', async (name) => {
+        const createError = (token) => new Error('custom error');
+        const parent = CT.manual(createError).cancel();
+        const token = name === 'timeout' ? parent.timeout(15) : name === 'manual' ? parent.manual() : parent.event(events, 'test');
+        await expect(token.wait(sleep(15))).rejects.toThrow("custom error");
+        expect(token.cancelledError).toBeInstanceOf(Error);
     });
 
     it.each([['timeout'], ['manual'], ['event']])('target promise rejected %p token', async (name) => {

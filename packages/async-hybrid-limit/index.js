@@ -224,6 +224,8 @@ class AsyncHybridLimit {
             slot = slot[1];
         }
 
+        if (!releasedSlot) throw new Error(`Internal error: cannot find corresponding slots use for ${ticketMaxSlotCount}`);
+
         let waiter = this.#first[1];
         this.#startSlot = this.#first[0];
 

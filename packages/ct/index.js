@@ -34,6 +34,10 @@ function createRaceError(index, error) {
 }
 
 class CancellationEventError extends Error {
+    static create(token) {
+        return new CancellationEventError(token);
+    }
+
     constructor(token, error) {
         super('Async call cancelled');
         this.token = token;
@@ -60,6 +64,7 @@ class CancellationToken extends EventEmitter {
 
     #type;
     #name = null;
+    #createError = CancellationEventError.create;
 
     #cancelPromise = [null, null];
 
@@ -126,21 +131,24 @@ class CancellationToken extends EventEmitter {
 
         this.#type = options.type || ManualToken;
 
-        let parents, name, parent = options.parent;
+        let parents, name, createError = null, parent = options.parent;
         const userOptions = options.options;
 
         if (userOptions) {
-            if (typeof userOptions === 'string') name = userOptions;
+            if (typeof userOptions === 'string' || typeof userOptions === 'symbol') name = userOptions;
+            else if (userOptions instanceof Function) createError = userOptions;
             else if (Array.isArray(userOptions)) parents = userOptions;
             else if (typeof userOptions === 'object') {
                 if (userOptions.name) name = userOptions.name;
-                if (userOptions.parents) parents = userOptions.parents; 
+                if (userOptions.parents) parents = userOptions.parents;
+                if (userOptions.createError) createError = userOptions.createError;
             }
         }
 
         if (parent) this.#attachTo(parent);
         if (parents) this.#attachTo(parents);
         if (name !== undefined) this.#name = name;
+        if (createError !== null) this.#createError = createError;
 
         if (this.#type === ManualToken) {
         } else if (this.#type === TimeoutToken) {
@@ -159,8 +167,9 @@ class CancellationToken extends EventEmitter {
         return ref;
     }
 
-    #createListener() {
+    #getListener() {
         if (!this.#listener) this.#listener = this.#cancel.bind(this, this);
+        return this.#listener;
     }
 
     #createCancelPromise(index) {
@@ -186,10 +195,9 @@ class CancellationToken extends EventEmitter {
     }
 
     #startTimer(timeout) {
-        this.#createListener();
         if (this.#type !== TimeoutToken) throw new Error('timeout token exclusive');
         this.#clearTimer();
-        this.#timeout = setTimeout(this.#listener, timeout);
+        this.#timeout = setTimeout(this.#getListener(), timeout);
     }
 
     #clearTimer() {
@@ -200,17 +208,29 @@ class CancellationToken extends EventEmitter {
     }
 
     #cancel(sourceToken, error) {
+        if (this.#cancelled) return;
         if (!sourceToken) sourceToken = this;
         if (this.#type === TimeoutToken) this.#clearTimer();
         else if (this.#type === ManualToken);
         else if (this.#type === EventToken) this.#unsubscribeEvent();
 
-        this.emit('cancel', sourceToken);
+        if (!error) error = this.#createError(sourceToken);
+
+        this.emit('cancel', sourceToken, error);
 
         if (this.#cancelPromise) {
-            if (this.#cancelPromise[1]) this.#cancelPromise[1][2](new CancellationEventError(sourceToken));
+            if (this.#cancelPromise[1]) this.#cancelPromise[1][2](error);
             if (this.#cancelPromise[0]) this.#cancelPromise[0][1](sourceToken);
             this.#cancelPromise = [null, null];
+        }
+        
+        if (this.#parents) {
+            if (this.#parents instanceof Map) {
+                for (let sub of this.#parents.values()) EventProxy.off(sub);
+            }
+            else if (this.#parents) {
+                EventProxy.off(this.#parents[1]);
+            }
         }
 
         this.#cancelled = true;
@@ -218,8 +238,8 @@ class CancellationToken extends EventEmitter {
         this.#cancelledError = error;
     }
 
-    cancel(error = null) {
-        if (!this.#cancelled) this.#cancel(this, error);
+    cancel() {
+        if (!this.#cancelled) this.#cancel(this);
         return this;
     }
 
@@ -249,7 +269,7 @@ class CancellationToken extends EventEmitter {
                 if (isMap ? !this.#parents.has(parent) : !this.#parents || this.#parents[0] !== parent) {
                     let sub = null;
                     if (!this.#cancelled) {
-                        if (parent.cancelled) this.#cancel(parent.cancelledBy);
+                        if (parent.cancelled) this.#cancel(parent.cancelledBy, parent.cancelledError);
                         else {
                             ref = ref || this.ref;
                             sub = EventProxy.once(parent, 'cancel', ref, this.#cancel);
@@ -272,8 +292,8 @@ class CancellationToken extends EventEmitter {
         for (let parent of parents) {
             if (!parent) continue;
             let sub = isMap ? this.#parents.get(parent) : this.#parents[0] === parent ? this.#parents[1] : undefined;
-            if (sub !== undefined) {
-                if (sub) EventProxy.off(sub);
+            if (sub) {
+                EventProxy.off(sub);
                 isMap ? this.#parents.delete(parent) : this.#parents = undefined;
                 if (!isMap) return;
             }
@@ -294,7 +314,7 @@ class CancellationToken extends EventEmitter {
         const onCancel = (token) => {
             if (cancel) cancel();
             if (doNotThrow) resolve(token);
-            else reject(new CancellationEventError(token));
+            else reject(this.#createError(token));
         };
 
         this.once('cancel', onCancel);
@@ -315,7 +335,7 @@ class CancellationToken extends EventEmitter {
 
             this.once('cancel', (token) => {
                 clearTimeout(timeout);
-                doNotThrow ? resolve(token) : reject(new CancellationEventError(token));
+                doNotThrow ? resolve(token) : reject(this.#createError(token));
             });
         });
     }
@@ -340,7 +360,7 @@ class CancellationToken extends EventEmitter {
 
             this.once('cancel', (token) => {
                 target.off(event, waiter);
-                doNotThrow ? resolve(token) : reject(new CancellationEventError(token));
+                doNotThrow ? resolve(token) : reject(this.#createError(token));
             });
         });
     }
@@ -357,7 +377,7 @@ class CancellationToken extends EventEmitter {
 
             this.once('cancel', (token) => {
                 target.off(event, waiter);
-                doNotThrow ? resolve(token) : reject(new CancellationEventError(token));
+                doNotThrow ? resolve(token) : reject(this.#createError(token));
             });
         });
     }
@@ -455,15 +475,15 @@ class CancellationToken extends EventEmitter {
     }
 
     static async catchCancelError(promise) {
-        return promise.then(value => value, error => { if (error instanceof CancellationEventError) return error.token; else throw error });
+        return promise.catch(error => { if (error instanceof CancellationEventError) return error.token; else throw error });
     }
 
     async catchCancelError(promise) {
-        return promise.then(value => value, error => { if (error instanceof CancellationEventError) return error.token; else throw error });
+        return promise.catch(error => { if (error instanceof CancellationEventError) return error.token; else throw error });
     }
 
     throwIfCancelled() {
-        if (this.#cancelledBy) throw new CancellationEventError(this.#cancelledBy);
+        if (this.#cancelledBy) throw this.#cancelledError;
     }
 
     get isTimeout() {
