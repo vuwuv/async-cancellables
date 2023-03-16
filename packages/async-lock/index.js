@@ -24,6 +24,14 @@ class AsyncLock {
         return this.#waiters.length > 0;
     }
 
+    get waitersCount() {
+        return this.#waiters.length;
+    }
+
+    get waitersSlots() {
+        return this.#waiters.reduce((a, b) => a + b[1], 0);
+    }
+
     set totalSlots(value) {
         if (!Number.isInteger(value)) throw new Error('totalSlots should be integer');
         for (let item of this.#waiters)

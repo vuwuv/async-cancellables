@@ -75,6 +75,8 @@ Another way to release slots used by `ticket` is to call `release()` method of t
 - `usedSlots` gets slot count currently occupied
 - `availableSlots` get slot count currently available
 - `waitersPresent` returns presence of any waiters in the queue
+- `waitersCount` returns count of waiters in the queue
+- `waitersSlots` returns total slot count of waiters in the queue
 
 ## Authors
 
