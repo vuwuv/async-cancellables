@@ -182,8 +182,8 @@ class CancellationToken extends EventEmitter {
         return promise;
     }
 
-    #listenProxy(error) {
-        this.#cancel(this, error);
+    #listenProxy() {
+        this.#cancel(this);
     }
 
     #subscribeEvent() {
@@ -311,10 +311,10 @@ class CancellationToken extends EventEmitter {
     }
 
     processCancel(resolve, reject, cancel, doNotThrow = false) {
-        const onCancel = (token) => {
+        const onCancel = (token, error) => {
             if (cancel) cancel();
             if (doNotThrow) resolve(token);
-            else reject(this.#createError(token));
+            else reject(error);
         };
 
         this.once('cancel', onCancel);

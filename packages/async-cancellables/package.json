@@ -1,6 +1,6 @@
 {
     "name": "async-cancellables",
-    "version": "2.2.1",
+    "version": "2.2.2",
     "description": "CancellationToken and example/utility classes with cancellation support",
     "main": "index.js",
     "type": "module",
@@ -27,6 +27,6 @@
     "dependencies": {
         "@async-cancellables/async-lock": "^2.2.0",
         "@async-cancellables/async-state": "^2.1.0",
-        "@async-cancellables/ct": "^2.2.0"
+        "@async-cancellables/ct": "^2.2.1"
     }
 }

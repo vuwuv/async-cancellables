@@ -129,7 +129,7 @@ describe('CancellationToken', () => {
         events.clear();
         let parent = tokenType === 'timeout' ? CT.timeout(timeout, options) : tokenType === 'manual' ? CT.manual(options) : CT.event(events, 'test', options);
         let token = parent.manual();
-        events.timer(timeout, 'test');
+        events.timer(timeout, 'test', true);
         if (tokenType === 'manual') setTimeout(() => parent.cancel(), timeout);
         await expect(token.wait(sleep(15))).rejects.toThrow("custom error");
         expect(token.cancelledError).toBeInstanceOf(Error);
@@ -139,7 +139,7 @@ describe('CancellationToken', () => {
         events.clear();
         parent = CT.manual();
         token = tokenType === 'timeout' ? parent.timeout(timeout, options) : tokenType === 'manual' ? parent.manual(options) : parent.event(events, 'test', options);
-        events.timer(timeout, 'test');
+        events.timer(timeout, 'test', true);
         setTimeout(() => parent.cancel(), 2);
         await expect(token.wait(sleep(15))).rejects.toThrow("Async call cancelled");
         expect(token.cancelledError).toBeInstanceOf(CancellationEventError);
@@ -149,7 +149,7 @@ describe('CancellationToken', () => {
         events.clear();
         parent = tokenType === 'timeout' ? CT.timeout(timeout, options) : tokenType === 'manual' ? CT.manual(options) : CT.event(events, 'test', options);
         token = parent.manual();
-        events.timer(timeout, 'test');
+        events.timer(timeout, 'test', true);
         if (tokenType === 'manual') setTimeout(() => parent.cancel(), timeout);
         token.cancel();
         await expect(token.wait(sleep(15))).rejects.toThrow("Async call cancelled");
@@ -159,6 +159,23 @@ describe('CancellationToken', () => {
         expect(token.cancelledError).toBeInstanceOf(CancellationEventError);
         expect(token.cancelledBy).toBe(token);
         expect(parent.cancelledBy).toBe(parent);
+
+        // parent with customError, parent cancelled first, using processCancel
+        events.clear();
+        parent = CT.manual();
+        token = tokenType === 'timeout' ? parent.timeout(timeout, options) : tokenType === 'manual' ? parent.manual(options) : parent.event(events, 'test', options);
+        events.timer(timeout, 'test', true);
+        setTimeout(() => parent.cancel(), 2);
+
+        let promise = new Promise((resolve, reject) => {
+            let timeoutObject;
+            [resolve, reject] = token.processCancel(resolve, reject, () => clearTimeout(timeoutObject));
+            timeoutObject = setTimeout(resolve, timeout);
+        });
+
+        await expect(promise).rejects.toThrow("Async call cancelled");
+        expect(token.cancelledError).toBeInstanceOf(CancellationEventError);
+        expect(parent.cancelledError).toBeInstanceOf(CancellationEventError);
     });
 
     it.each([['timeout'], ['manual'], ['event']])('%p cancelError from cancelled token', async (name) => {
@@ -173,7 +190,7 @@ describe('CancellationToken', () => {
         events.clear();
         const timeout = 30;
         let token = name === 'timeout' ? CT.timeout(timeout) : name === 'manual' ? CT.manual() : CT.event(events, 'test');
-        events.timer(timeout);
+        events.timer(timeout, true);
         await expect(token.wait(sleepError(15, 'error message'))).rejects.toThrow('error message');
     });
 
