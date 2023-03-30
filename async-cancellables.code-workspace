@@ -14,7 +14,7 @@
                 "request": "launch",
                 "env": { "CI": "true", "NODE_OPTIONS": "--experimental-vm-modules" },
                 "program": "${workspaceRoot}/node_modules/jest/bin/jest.js",
-                "args": ["--verbose", "-i", "--no-cache"],
+                "args": ["--verbose", "-i", "--no-cache", "cancellationToken"],
                 "cwd": "${workspaceRoot}",
                 //"protocol": "inspector",
                 "console": "integratedTerminal",

@@ -1,18 +1,20 @@
 {
-    "name": "async-cancellables",
-    "version": "2.3.0",
-    "description": "CancellationToken and example/utility classes with cancellation support",
+    "name": "@async-cancellables/async-simple-rpc",
+    "version": "0.2.0",
+    "description": "Asynchronous RPC with cancellation support",
     "main": "index.js",
     "type": "module",
     "repository": {
         "type": "git",
         "url": "git+https://github.com/vuwuv/async-cancellables.git",
-        "directory": "packages/async-cancellables"
+        "directory": "packages/async-simple-rpc"
     },
     "keywords": [
         "async",
         "cancellable",
-        "CancellationToken",
+        "rpc",
+        "AsyncRpcClient",
+        "AsyncRpcServer",
         "cancellation"
     ],
     "author": "vuwuv",
@@ -25,8 +27,10 @@
         "node": ">=18.0.0"
     },
     "dependencies": {
-        "@async-cancellables/async-lock": "^2.2.0",
-        "@async-cancellables/async-state": "^2.1.0",
         "@async-cancellables/ct": "^2.3.0"
+    },
+    "peerDependencies": {
+        "socket.io": "^4.6.1",
+        "socket.io-client": "^4.6.1"
     }
 }

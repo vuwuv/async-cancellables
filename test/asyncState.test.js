@@ -1,62 +1,31 @@
 import EventEmitter from 'events';
 import AsyncState from '@async-cancellables/async-state';
 import CT from '@async-cancellables/ct';
-
-async function delay(ms, param) {
-    return new Promise((resolve, reject) => setTimeout(() => resolve(param), ms));
-}
-
-async function sleep(ms, returnValue = true) {
-    return new Promise((resolve) => {
-        setTimeout(resolve.bind(undefined, returnValue), ms);
-    });
-}
+import syncify from './lib/syncify';
 
 const symbol = Symbol();
 
 async function checkPromises(promises) {
     let results = [];
     for (let i = 0; i < promises.length; i++) {
-        let result = await Promise.any([promises[i], sleep(1, symbol)]);
+        let result = await Promise.any([promises[i], CT.sleep(1, symbol)]);
         results[i] = result;
     }
     return results;
 }
 
-function arraysRemoveDimensions(...arrays) {
-    const array = arrays.shift() || [];
-    const rest = arrays.length ? arraysRemoveDimensions(...arrays) : [[]];
-    const result = [];
-
-    for (let current of array) {
-        for (let item of rest) {
-            result.push([current, ...item]);
-        }
-    }
-
-    return result;
-}
-
-function setNames(list) {
-    for (let line of list) {
-        line.unshift(line.join('/'));
-    }
-    return list;
-}
-
 const emitter = new EventEmitter();
 
 describe('AsyncState', () => {
-    it.each(setNames(arraysRemoveDimensions(['manual', 'event'], ['simple', 'cancellation'])))(
+    eachMulti(['manual', 'event'], ['simple', 'cancellation'])(
         'wait/waitEmpty type %j',
         async (name, stateType, cancellationType) => {
             let state,
                 timeout,
                 promises,
-                results,
                 ct = null,
-                timeoutSetResult,
-                timeoutClearResult;
+                sleep,
+                event = Symbol();
             const cancel = cancellationType === 'cancellation';
 
             if (cancel) ct = CT.timeout(10);
@@ -65,50 +34,42 @@ describe('AsyncState', () => {
                 state = AsyncState.manual();
                 timeout = setTimeout(() => state.set(2), 20);
             } else {
-                state = AsyncState.event(emitter, 'test1', (a, b) => a + b);
-                timeout = setTimeout(() => emitter.emit('test1', 1, 1), 20);
+                state = AsyncState.event(emitter, event, (a, b) => a + b);
+                timeout = setTimeout(() => emitter.emit(event, 1, 1), 20);
             }
 
-            promises = [state.wait(), state.waitEmpty(), CT.catchCancelError(state.wait(ct)), CT.catchCancelError(state.waitEmpty(ct))];
-            results = await checkPromises(promises);
-            expect(results).toEqual([symbol, undefined, symbol, undefined]);
+            sleep = [CT.sleep(22)];
 
-            await delay(22);
+            promises = [state.wait(), state.waitEmpty(), state.wait(ct), state.waitEmpty(ct)];
+            await expect(promises).toPartiallyResolve([Pending, undefined, Pending, undefined]);
+            await sleep[0];
+            await expect(promises).toPartiallyResolve(cancel ? [2, undefined, ct, undefined] : [2, undefined, 2, undefined]);
 
-            results = await checkPromises(promises);
-            expect(results).toEqual(cancel ? [2, undefined, ct, undefined] : [2, undefined, 2, undefined]);
-
-            promises = [state.wait(), state.waitEmpty(), CT.catchCancelError(state.wait(ct)), CT.catchCancelError(state.waitEmpty(ct))];
-            results = await checkPromises(promises);
-            expect(results).toEqual(cancel ? [2, symbol, 2, ct] : [2, symbol, 2, symbol]);
+            promises = [state.wait(), state.waitEmpty(), state.wait(ct), state.waitEmpty(ct)];
+            await expect(promises).toPartiallyResolve(cancel ? [2, Pending, 2, ct] : [2, Pending, 2, Pending]);
 
             if (cancel) ct = CT.timeout(10);
-
             timeout = setTimeout(() => state.clear(), 20);
+            sleep = [CT.sleep(25)];
 
-            promises = [state.wait(), state.waitEmpty(), CT.catchCancelError(state.wait(ct)), CT.catchCancelError(state.waitEmpty(ct))];
-            results = await checkPromises(promises);
-            expect(results).toEqual(cancel ? [2, symbol, 2, symbol] : [2, symbol, 2, symbol]);
+            promises = [state.wait(), state.waitEmpty(), state.wait(ct), state.waitEmpty(ct)];
+            await expect(promises).toPartiallyResolve(cancel ? [2, Pending, 2, Pending] : [2, Pending, 2, Pending]);
+            await sleep[0];
+            await expect(promises).toPartiallyResolve(cancel ? [2, undefined, 2, ct] : [2, undefined, 2, undefined]);
 
-            await delay(25);
-
-            results = await checkPromises(promises);
-            expect(results).toEqual(cancel ? [2, undefined, 2, ct] : [2, undefined, 2, undefined]);
-
-            promises = [state.wait(), state.waitEmpty(), CT.catchCancelError(state.wait(ct)), CT.catchCancelError(state.waitEmpty(ct))];
-            results = await checkPromises(promises);
-            expect(results).toEqual(cancel ? [symbol, undefined, ct, undefined] : [symbol, undefined, symbol, undefined]);
+            promises = [state.wait(), state.waitEmpty(), state.wait(ct), state.waitEmpty(ct)];
+            await expect(promises).toPartiallyResolve(cancel ? [Pending, undefined, ct, undefined] : [Pending, undefined, Pending, undefined]);
 
             if (cancel) {
                 ct = CT.timeout(10);
-                await expect(state.wait(ct)).rejects.toThrow();
+                await expect(state.wait(ct)).rejects.toMatchError('Async call cancelled');
                 state.set(true);
                 ct = CT.timeout(10);
-                await expect(state.waitEmpty(ct)).rejects.toThrow();
+                await expect(state.waitEmpty(ct)).rejects.toMatchError('Async call cancelled');
                 state.clear();
-                await expect(state.wait(ct)).rejects.toThrow();
+                await expect(state.wait(ct)).rejects.toMatchError('Async call cancelled');
                 state.set(true);
-                await expect(state.waitEmpty(ct)).rejects.toThrow();
+                await expect(state.waitEmpty(ct)).rejects.toMatchError('Async call cancelled');
                 await expect(state.wait(ct)).resolves.toBe(true);
                 state.clear();
                 await expect(state.waitEmpty(ct)).resolves.toBe(undefined);
@@ -140,7 +101,7 @@ describe('AsyncState', () => {
         results = await checkPromises(promises);
 
         expect(results).toEqual([symbol, symbol, ct2]);
-        await sleep(22);
+        await CT.sleep(22);
         results = await checkPromises(promises);
         expect(results).toEqual([3, ct1, ct2]);
 
@@ -155,6 +116,6 @@ describe('AsyncState', () => {
         ct1 = CT.timeout(10);
         ct2 = CT.manual().cancel();
 
-        await Promise.all([expect(state.handleValue(handler, ct1)).rejects.toThrow(), expect(state.handleValue(handler, ct2)).rejects.toThrow()]);
+        await Promise.all([expect(state.handleValue(handler, ct1)).rejects.toMatchError('Async call cancelled'), expect(state.handleValue(handler, ct2)).rejects.toMatchError('Async call cancelled')]);
     });
 });

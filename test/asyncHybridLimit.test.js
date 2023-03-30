@@ -17,28 +17,28 @@ function random(length) {
 
 async function stressTest() {
     const limit = new AsyncHybridLimit();
-    
+
     const totalWaves = 30;
     const tickets = [];
     let promises = [];
     let balance = 6;
     const log = [];
     let waves = 0;
-    
+
     try {
-        for (let i = 0; waves < totalWaves || promises.length || tickets.length ; i++){
+        for (let i = 0; waves < totalWaves || promises.length || tickets.length; i++) {
             for (let j = 0; j < balance; j++) {
                 const max = random(100) || 1;
                 const slots = random(max / 4) || 1;
                 //log.push([0, max, slots]);
-                promises.push(Math.random() > 0.5 ? limit.waitPrioritized(max, slots, Math.random()) : limit.wait(max, slots));
+                promises.push(syncify(Math.random() > 0.5 ? limit.waitPrioritized(max, slots, Math.random()) : limit.wait(max, slots)));
             }
-            
+
+            await CT.sleep(0);
             let pending = [];
-            (await promiseCheck(promises)).forEach((item, index) => item === promiseCheck.pendingSymbol ? pending.push(promises[index]) : tickets.push(item));
-    
+            promises.forEach((item) => item.complete ? tickets.push(item.value) : pending.push(item));
             promises = pending;
-    
+
             for (let j = 0; j < 10 - balance; j++) {
                 if (tickets.length === 0) break;
                 const index = random(tickets.length);
@@ -47,37 +47,37 @@ async function stressTest() {
                 limit.release(ticket);
                 tickets.splice(index, 1);
             }
-    
+
             if (promises.length > 600) balance = 3;
             else if (promises.length === 0) {
                 if (balance < 5) waves++;
                 balance = 6;
             }
-    
+
             if (i % 100 === 0) {
-                consoleLog(`${Math.round(waves / totalWaves * 100)}% complete (${limit.usedSlots(100)} slots used, ${promises.length} promises waiting)`, false);
+                consoleLog(
+                    `${Math.round((waves / totalWaves) * 100)}% complete (${limit.usedSlots(100)} slots used, ${promises.length} promises waiting)`,
+                    false
+                );
             }
         }
 
-        consoleLog("");
+        consoleLog('');
 
         expect(limit.usedSlots(1000)).toBe(0);
-    }
-    catch (error) {
+    } catch (error) {
         consoleLog(error);
-    
+
         const limit = new AsyncHybridLimit();
-    
+
         for (let i = 0; i < log.length; i++) {
             let op = log[i];
-            
-            if (i === log.length - 1) 
-                consoleLog();
-    
+
+            if (i === log.length - 1) consoleLog();
+
             if (op[0] === 0) {
                 await Promise.any([limit.wait(op[1], op[2]), settled]);
-            }
-            else {
+            } else {
                 limit.release({ limit, maxSlotCount: op[1], slotCount: op[2] });
             }
         }
@@ -90,8 +90,7 @@ describe('AsyncHybridLimit', () => {
         it('stress test', async () => {
             await stressTest();
         });
-    }
-    else {
+    } else {
         it('number checks', async () => {
             let limit = new AsyncHybridLimit();
             await expect(limit.waitOne(0)).rejects.toThrow();
@@ -109,7 +108,8 @@ describe('AsyncHybridLimit', () => {
         });
 
         it('ticket checks', async () => {
-            let limit = new AsyncHybridLimit(), limit2 = new AsyncHybridLimit();
+            let limit = new AsyncHybridLimit(),
+                limit2 = new AsyncHybridLimit();
             let ticket = await limit.wait(5, 2);
             ticket.release();
             expect(() => ticket.release()).toThrow();
@@ -122,7 +122,8 @@ describe('AsyncHybridLimit', () => {
 
         it('usedSlots/freeSlots', async () => {
             let limit = new AsyncHybridLimit();
-            let tickets = [], promises = [];
+            let tickets = [],
+                promises = [];
 
             tickets[0] = await limit.wait(1, 1);
             expect(usedSlots(limit, 1, 3, 5)).toEqual([1, 1, 1]);
@@ -213,10 +214,8 @@ describe('AsyncHybridLimit', () => {
             expect(usedSlots(limit, 1, 3, 6, 8, 10, 18, 20, 24)).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
             expect(freeSlots(limit, 1, 3, 6, 8, 10, 18, 20, 24)).toEqual([1, 3, 6, 8, 10, 18, 20, 24]);
 
-            promises[0] = limit.wait(2, 2);
-            promises[1] = limit.wait(3, 2);
-            promises[2] = limit.wait(4, 2);
-            tickets = await promiseCheck(promises);
+            promises = [limit.wait(2, 2), limit.wait(3, 2), limit.wait(4, 2)];
+            await expect(promises).toPartiallyResolve([Resolved, Pending, Pending]);
             expect(usedSlots(limit, 1, 3, 4, 5)).toEqual([1, 3, 4, 4]);
             expect(freeSlots(limit, 1, 3, 4, 5)).toEqual([0, 0, 0, 1]);
         });
@@ -226,151 +225,139 @@ describe('AsyncHybridLimit', () => {
             let tickets, promises;
 
             promises = [limit.wait(2, 1), limit.wait(20, 2), limit.wait(6, 1), limit.wait(20, 2), limit.wait(15, 1), limit.wait(20, 2)];
-            tickets = await promiseCheck(promises);
+            await expect(promises).toPartiallyResolve([Resolved, Resolved, Resolved, Resolved, Resolved, Resolved]);
             expect(usedSlots(limit, 5, 10, 15, 25)).toEqual([1, 2, 4, 9]);
             expect(freeSlots(limit, 5, 10, 15, 25)).toEqual([4, 8, 11, 16]);
 
-            tickets[5].release();
+            promises[5].value.release();
+            await expect(promises).toPartiallyResolve([Resolved, Resolved, Resolved, Resolved, Resolved, Resolved]);
             expect(usedSlots(limit, 5, 10, 15, 25)).toEqual([1, 2, 3, 7]);
             expect(freeSlots(limit, 5, 10, 15, 25)).toEqual([4, 8, 12, 18]);
 
-            tickets[3].release();
+            promises[3].value.release();
+            await expect(promises).toPartiallyResolve([Resolved, Resolved, Resolved, Resolved, Resolved, Resolved]);
             expect(usedSlots(limit, 5, 10, 15, 25)).toEqual([1, 2, 3, 5]);
             expect(freeSlots(limit, 5, 10, 15, 25)).toEqual([4, 8, 12, 20]);
 
-            tickets[1].release();
+            promises[1].value.release();
+            await expect(promises).toPartiallyResolve([Resolved, Resolved, Resolved, Resolved, Resolved, Resolved]);
             expect(usedSlots(limit, 5, 10, 15, 25)).toEqual([1, 2, 3, 3]);
             expect(freeSlots(limit, 5, 10, 15, 25)).toEqual([4, 8, 12, 22]);
         });
 
         it('insert', async () => {
             let limit = new AsyncHybridLimit();
-            let tickets, promises;
+            let promises;
 
             promises = [limit.wait(2, 2), limit.wait(3, 2), limit.wait(4, 2), limit.waitPrioritized(3, 1, 1), limit.wait(5, 1)];
-
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 0, 0, 1, 1]);
-        })
+            await expect(promises).toPartiallyResolve([Resolved, Pending, Pending, Resolved, Resolved]);
+        });
 
         it('order', async () => {
             let limit = new AsyncHybridLimit();
-            let tickets, promises;
 
-            promises = [limit.waitOne(1), limit.waitOne(2), limit.wait(2, 2), limit.waitOne(1)];
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 1, 0, 0]);
+            let promises = [limit.waitOne(1), limit.waitOne(2), limit.wait(2, 2), limit.waitOne(1)];
+            await expect(promises).toPartiallyResolve([Resolved, Resolved, Pending, Pending]);
 
-            tickets[0].release();
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 1, 0, 0]);
+            promises[0].value.release();
+            await expect(promises).toPartiallyResolve([Resolved, Resolved, Pending, Pending]);
 
-            tickets[1].release();
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 1, 1, 0]);
+            promises[1].value.release();
+            await expect(promises).toPartiallyResolve([Resolved, Resolved, Resolved, Pending]);
 
-            tickets[2].release();
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 1, 1, 1]);
-            tickets[3].release();
+            promises[2].value.release();
+            await expect(promises).toPartiallyResolve([Resolved, Resolved, Resolved, Resolved]);
+
+            promises[3].value.release();
 
             promises = [limit.waitOne(1), limit.wait(2, 2), limit.wait(3, 3), limit.wait(4, 2)];
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 0, 0, 0]);
+            await expect(promises).toPartiallyResolve([Resolved, Pending, Pending, Pending]);
 
-            tickets[0].release();
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 1, 0, 0]);
+            promises[0].value.release();
+            await expect(promises).toPartiallyResolve([Resolved, Resolved, Pending, Pending]);
 
-            tickets[1].release();
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 1, 1, 0]);
+            promises[1].value.release();
+            await expect(promises).toPartiallyResolve([Resolved, Resolved, Resolved, Pending]);
 
-            tickets[2].release();
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 1, 1, 1]);
-            tickets[3].release();
+            promises[2].value.release();
+            await expect(promises).toPartiallyResolve([Resolved, Resolved, Resolved, Resolved]);
+
+            promises[3].value.release();
         });
 
         it('priority', async () => {
             let limit = new AsyncHybridLimit();
-            let tickets, promises;
 
-            promises = [limit.waitOne(1), limit.waitOne(1), limit.waitPrioritized(1, 1, -1), limit.waitOne(1), limit.waitPrioritized(1, 1, 1)];
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 0, 0, 0, 0]);
+            let promises = [limit.waitOne(1), limit.waitOne(1), limit.waitPrioritized(1, 1, -1), limit.waitOne(1), limit.waitPrioritized(1, 1, 1)];
+            await CT.sleep(0);
+            await expect(promises).toPartiallyResolve([Resolved, Pending, Pending, Pending, Pending]);
 
-            tickets[0].release();
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 0, 0, 0, 1]);
+            promises[0].value.release();
+            await CT.sleep(0);
+            await expect(promises).toPartiallyResolve([Resolved, Pending, Pending, Pending, Resolved]);
 
-            tickets[4].release();
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 1, 0, 0, 1]);
+            promises[4].value.release();
+            await CT.sleep(0);
+            await expect(promises).toPartiallyResolve([Resolved, Resolved, Pending, Pending, Resolved]);
 
-            tickets[1].release();
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 1, 0, 1, 1]);
+            promises[1].value.release();
+            await CT.sleep(0);
+            await expect(promises).toPartiallyResolve([Resolved, Resolved, Pending, Resolved, Resolved]);
 
-            tickets[3].release();
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 1, 1, 1, 1]);
-            tickets[2].release();
+            promises[3].value.release();
+            await CT.sleep(0);
+            await expect(promises).toPartiallyResolve([Resolved, Resolved, Resolved, Resolved, Resolved]);
+
+            promises[2].value.release();
         });
 
         it('custom', async () => {
             let limit = new AsyncHybridLimit();
-            let tickets, promises;
 
-            promises = [limit.wait(10, 5), limit.wait(10, 5), limit.wait(5, 1), limit.wait(5, 1), limit.wait(3, 1)];
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 1, 0, 0, 0]);
+            let promises = [limit.wait(10, 5), limit.wait(10, 5), limit.wait(5, 1), limit.wait(5, 1), limit.wait(3, 1)];
+            await expect(promises).toPartiallyResolve([Resolved, Resolved, Pending, Pending, Pending]);
             expect(usedSlots(limit, 10)).toEqual([10]);
             expect(freeSlots(limit, 10)).toEqual([0]);
 
-            tickets[0].release();
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 1, 1, 1, 1]);
+            promises[0].value.release();
+            await expect(promises).toPartiallyResolve([Resolved, Resolved, Resolved, Resolved, Resolved]);
         });
 
         it('slot reservation', async () => {
             let limit = new AsyncHybridLimit();
-            let tickets, promises;
 
-            promises = [limit.wait(1, 1), limit.wait(1, 1), limit.wait(2, 2), limit.wait(3, 2), limit.wait(3, 1), limit.wait(4, 1)];
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 0, 0, 0, 0, 1]);
+            let promises = [limit.wait(1, 1), limit.wait(1, 1), limit.wait(2, 2), limit.wait(3, 2), limit.wait(3, 1), limit.wait(4, 1)];
+            await expect(promises).toPartiallyResolve([Resolved, Pending, Pending, Pending, Pending, Resolved]);
 
-            tickets[0].release();
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 1, 0, 0, 0, 1]);
+            promises[0].value.release();
+            await expect(promises).toPartiallyResolve([Resolved, Resolved, Pending, Pending, Pending, Resolved]);
         });
 
         it('priority + reservation', async () => {
             let limit = new AsyncHybridLimit();
-            let tickets, promises;
+            let promises;
 
             promises = [limit.wait(1, 1), limit.wait(1, 1), limit.wait(2, 2), limit.wait(3, 2), limit.wait(3, 1), limit.wait(4, 1)];
         });
 
         it('waitersPresent/waitersCount/waitersSlots', async () => {
-            let limit = new AsyncHybridLimit(),
-                tickets,
-                promises;
+            let limit = new AsyncHybridLimit();
+
             expect(limit.waitersPresent).toBe(false);
             expect(limit.waitersCount).toBe(0);
             expect(limit.waitersSlots).toBe(0);
-            promises = [limit.waitOne(1), limit.waitOne(1), limit.wait(2, 2)];
-            tickets = await promiseCheck(promises);
+            let promises = [limit.waitOne(1), limit.waitOne(1), limit.wait(2, 2)];
+            await expect(promises).toPartiallyResolve([Resolved, Pending, Pending]);
             expect(limit.waitersPresent).toBe(true);
             expect(limit.waitersCount).toBe(2);
             expect(limit.waitersSlots).toBe(3);
-            tickets[0].release();
-            tickets = await promiseCheck(promises);
+            promises[0].value.release();
+            await expect(promises).toPartiallyResolve([Resolved, Resolved, Pending]);
             expect(limit.waitersPresent).toBe(true);
             expect(limit.waitersCount).toBe(1);
             expect(limit.waitersSlots).toBe(2);
-            tickets[1].release();
+            promises[1].value.release();
+            await expect(promises).toPartiallyResolve([Resolved, Resolved, Resolved]);
             expect(limit.waitersPresent).toBe(false);
             expect(limit.waitersCount).toBe(0);
             expect(limit.waitersSlots).toBe(0);
@@ -378,39 +365,29 @@ describe('AsyncHybridLimit', () => {
 
         it.each([['wait'], ['waitOne'], ['waitPrioritized']])('%p basic cancellation', async (name) => {
             let limit = new AsyncHybridLimit();
-            let tickets, promises;
-            
             let token = CT.manual();
 
-            promises = [
+            let promises = [
                 limit.waitOne(1),
-                CT.catchCancelError(name === 'wait' ? limit.wait(1, 1, token) : name === 'waitOne' ? limit.waitOne(1, token) : limit.waitPrioritized(1, 1, 1, token)),
+                name === 'wait' ? limit.wait(1, 1, token) : name === 'waitOne' ? limit.waitOne(1, token) : limit.waitPrioritized(1, 1, 1, token),
                 limit.wait(3, 3),
             ];
 
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 0, 0]);
+            await expect(promises).toPartiallyResolve([Resolved, Pending, Pending]);
             token.cancel();
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 2, 0]);
-            tickets[0].release();
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 2, 1]);
-            tickets[2].release();
+            await expect(promises).toPartiallyResolve([Resolved, Cancelled, Pending]);
+            promises[0].value.release();
+            await expect(promises).toPartiallyResolve([Resolved, Cancelled, Resolved]);
+            promises[2].value.release();
 
             token = CT.manual();
 
-            promises = [
-                limit.wait(1, 1),
-                CT.catchCancelError(limit.wait(1, 1, token)),
-            ];
+            promises = [limit.wait(1, 1), limit.wait(1, 1, token)];
 
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 0]);
+            await expect(promises).toPartiallyResolve([Resolved, Pending]);
             token.cancel();
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 2]);
-            tickets[0].release();
+            await expect(promises).toPartiallyResolve([Resolved, Cancelled]);
+            promises[0].value.release();
         });
 
         it('cancellation order', async () => {
@@ -419,21 +396,14 @@ describe('AsyncHybridLimit', () => {
             limit = new AsyncHybridLimit();
             token = CT.manual();
 
-            promises = [
-                limit.wait(1, 1),
-                CT.catchCancelError(limit.wait(2, 2, token)),
-                limit.wait(3, 2),
-                limit.wait(5, 3),
-            ];
+            promises = [limit.wait(1, 1), limit.wait(2, 2, token), limit.wait(3, 2), limit.wait(5, 3)];
 
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 0, 0, 0]);
+            await expect(promises).toPartiallyResolve([Resolved, Pending, Pending, Pending]);
             expect(limit.waitersPresent).toBe(true);
             expect(limit.waitersCount).toBe(3);
             expect(limit.waitersSlots).toBe(7);
             token.cancel();
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 2, 1, 0]);
+            await expect(promises).toPartiallyResolve([Resolved, Cancelled, Resolved, Pending]);
             expect(limit.waitersPresent).toBe(true);
             expect(limit.waitersCount).toBe(1);
             expect(limit.waitersSlots).toBe(3);
@@ -441,22 +411,14 @@ describe('AsyncHybridLimit', () => {
             limit = new AsyncHybridLimit();
             token = CT.manual();
 
-            promises = [
-                limit.wait(1, 1),
-                limit.wait(2, 1),
-                CT.catchCancelError(limit.wait(3, 2, token)),
-                limit.wait(4, 2),
-                limit.wait(6, 4),
-            ];
+            promises = [limit.wait(1, 1), limit.wait(2, 1), limit.wait(3, 2, token), limit.wait(4, 2), limit.wait(6, 4)];
 
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 1, 0, 0, 0]);
+            await expect(promises).toPartiallyResolve([Resolved, Resolved, Pending, Pending, Pending]);
             expect(limit.waitersPresent).toBe(true);
             expect(limit.waitersCount).toBe(3);
             expect(limit.waitersSlots).toBe(8);
             token.cancel();
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 1, 2, 1, 0]);
+            await expect(promises).toPartiallyResolve([Resolved, Resolved, Cancelled, Resolved, Pending]);
             expect(limit.waitersPresent).toBe(true);
             expect(limit.waitersCount).toBe(1);
             expect(limit.waitersSlots).toBe(4);
@@ -464,23 +426,14 @@ describe('AsyncHybridLimit', () => {
             limit = new AsyncHybridLimit();
             token = CT.manual();
 
-            promises = [
-                limit.wait(1, 1),
-                limit.wait(2, 1),
-                CT.catchCancelError(limit.wait(8, 7, token)),
-                limit.wait(4, 1),
-                limit.wait(6, 3),
-                limit.wait(8, 6),
-            ];
+            promises = [limit.wait(1, 1), limit.wait(2, 1), limit.wait(8, 7, token), limit.wait(4, 1), limit.wait(6, 3), limit.wait(8, 6)];
 
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 1, 0, 0, 0, 0]);
+            await expect(promises).toPartiallyResolve([Resolved, Resolved, Pending, Pending, Pending, Pending]);
             expect(limit.waitersPresent).toBe(true);
             expect(limit.waitersCount).toBe(4);
             expect(limit.waitersSlots).toBe(17);
             token.cancel();
-            tickets = await promiseCheck(promises);
-            expect(tickets).toPartiallyResolve([1, 1, 2, 1, 1, 0]);
+            await expect(promises).toPartiallyResolve([Resolved, Resolved, Cancelled, Resolved, Resolved, Pending]);
             expect(limit.waitersPresent).toBe(true);
             expect(limit.waitersCount).toBe(1);
             expect(limit.waitersSlots).toBe(6);

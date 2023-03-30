@@ -13,8 +13,10 @@
     -   [File download function limiting concurrent downloads](#file-download-function-limiting-concurrent-downloads)
     -   [Cancellable async calls via socket](#cancellable-async-calls-via-socket)
     -   [Cancellable sleep promise](#cancellable-sleep-promise)
+-   [Debug mode](#debug-mode)
 -   [API](#api)
     -   [Creating tokens](#creating-tokens)
+    -   [Token names](#token-names)
     -   [Wait methods](#wait-methods)
     -   [Static wait methods](#static-wait-methods)
     -   [Cancel methods](#cancel-methods)
@@ -155,6 +157,11 @@ async function sleep(ms, ct = null) {
 
 Example of binding cancellation token to a promise. If `ct` is cancelled, the promise will be rejected with `ct` error. If `ct` is not cancelled, the promise will be resolved after `ms` milliseconds. `ct.throwIfCancelled()` checks if `ct` is already cancelled and throws an error if it is. `ct.processCancel()` returns a new `resolve` and `reject` functions that will prevent calling cancel function (in this case it is `clearTimeout.bind(null, timeout)`) after promise is resolved or rejected. On cancelling `ct`, `onCancel` function will be called, it should stop the operation that is being waited for. In this case, it is clearing existing timeout.
 
+## Debug mode
+
+To enable debug mode, set `CT_DEBUG` environment variable to any value.
+In production mode tokens use error-like objects with stack traces, but in debug mode they use full Error objects which have both call stack (call that has been cancelled by the token) and cancellation stack (calls that caused the token to be cancelled).
+
 ## API
 
 ### Creating tokens
@@ -180,7 +187,7 @@ or by creating direct children for any token instance (same parameters apply):
 Options can be:
 
 -   `parents` - array of parents which can contain `null` or duplicate values that are ignored for convenience reasons
--   `name` - string name of the token, used for debugging or analysis purposes
+-   `name` - string or symbol name of the token, used for debugging or analysis purposes and also used for error messages and markers
 -   `createError` - function that creates error object when token is cancelled instead of default `CancellationTokenError`
 -   `options` - options object containing `name`, `parents`, `createError`
 
@@ -192,6 +199,25 @@ You can also add/remove additional parents to existing tokens via `attachTo` and
 Token is also cancelled when any of it's direct or indirect parents cancels. If a token chain is attached to a cancelled parent the whole chain immediately cancels.
 
 Tokens can be cancelled ONLY ONCE!
+
+### Token names
+
+Token has a `name` property that can be used not only for debugging or analysis purposes, but also for using as markers for error objects. It is `undefined` by default, but can be set upon creation. 
+
+Token name as a string value or symbol description is used in error messages, while name value can be accessed via `error.marker` property. 
+
+```js
+const timedOut = Symbol('timed out');
+const token = CancellationToken.timeout(1000, timedOut);
+
+try {
+    await dbCall(token);
+} catch (error) {
+    if (error.marker === timedOut) {
+        // timed out
+    }
+}
+```
 
 ### Wait methods
 

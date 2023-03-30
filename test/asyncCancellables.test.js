@@ -5,6 +5,4 @@ describe('async-cancellables', () => {
         await expect(sleep(5)).resolves.toBe(true);
         await expect(sleep(5, 'test')).resolves.toBe('test');
     });
-
-    
 });

@@ -1,22 +1,10 @@
 import AsyncLock from '@async-cancellables/async-lock';
 import CT from '@async-cancellables/ct';
 
-async function delay(ms, param) {
-    return new Promise((resolve, reject) => setTimeout(() => resolve(param), ms));
-}
-
-const symbol = Symbol();
-
-async function checkPromises(promises) {
-    let results = [];
-    for (let promise of promises) results.push(await Promise.race([promise, delay(1, symbol)]));
-    return results;
-}
-
 async function callFor(asyncLock, promise, time) {
     const ticket = await promise;
-    if (CT.isToken(ticket)) return ticket;
-    await delay(time);
+    //f (CT.isToken(ticket)) return ticket;
+    await CT.sleep(time);
     asyncLock.release(ticket);
     return true;
 }
@@ -46,28 +34,23 @@ describe('AsyncLock', () => {
             callFor(asyncLock, asyncLock.waitOne(), 80),
         ];
 
-        results = await checkPromises(promises);
-        expect(results).toEqual([symbol, symbol, symbol, symbol]);
+        await expect(promises).toPartiallyResolve([Pending, Pending, Pending, Pending]);
         expect(asyncLock.availableSlots).toBe(0);
 
-        await delay(40);
-        results = await checkPromises(promises);
-        expect(results).toEqual([true, symbol, symbol, symbol]);
+        await CT.sleep(40);
+        await expect(promises).toPartiallyResolve([true, Pending, Pending, Pending]);
         expect(asyncLock.availableSlots).toBe(0);
 
-        await delay(20);
-        results = await checkPromises(promises);
-        expect(results).toEqual([true, true, symbol, symbol]);
+        await CT.sleep(20);
+        await expect(promises).toPartiallyResolve([true, true, Pending, Pending]);
         expect(asyncLock.availableSlots).toBe(0);
 
-        await delay(60);
-        results = await checkPromises(promises);
-        expect(results).toEqual([true, true, true, symbol]);
+        await CT.sleep(60);
+        await expect(promises).toPartiallyResolve([true, true, true, Pending]);
         expect(asyncLock.availableSlots).toBe(0);
 
-        await delay(80);
-        results = await checkPromises(promises);
-        expect(results).toEqual([true, true, true, true]);
+        await CT.sleep(80);
+        await expect(promises).toPartiallyResolve([true, true, true, true]);
         expect(asyncLock.availableSlots).toBe(1);
 
         asyncLock = new AsyncLock(2);
@@ -79,28 +62,23 @@ describe('AsyncLock', () => {
             callFor(asyncLock, asyncLock.wait(1), 60),
         ];
 
-        results = await checkPromises(promises);
-        expect(results).toEqual([symbol, symbol, symbol, symbol]);
+        await expect(promises).toPartiallyResolve([Pending, Pending, Pending, Pending]);
         expect(asyncLock.availableSlots).toBe(1);
 
-        await delay(40);
-        results = await checkPromises(promises);
-        expect(results).toEqual([true, symbol, symbol, symbol]);
+        await CT.sleep(40);
+        await expect(promises).toPartiallyResolve([true, Pending, Pending, Pending]);
         expect(asyncLock.availableSlots).toBe(0);
 
-        await delay(20);
-        results = await checkPromises(promises);
-        expect(results).toEqual([true, true, symbol, symbol]);
+        await CT.sleep(20);
+        await expect(promises).toPartiallyResolve([true, true, Pending, Pending]);
         expect(asyncLock.availableSlots).toBe(0);
 
-        await delay(60);
-        results = await checkPromises(promises);
-        expect(results).toEqual([true, true, symbol, true]);
+        await CT.sleep(60);
+        await expect(promises).toPartiallyResolve([true, true, Pending, true]);
         expect(asyncLock.availableSlots).toBe(1);
 
-        await delay(60);
-        results = await checkPromises(promises);
-        expect(results).toEqual([true, true, true, true]);
+        await CT.sleep(60);
+        await expect(promises).toPartiallyResolve([true, true, true, true]);
         expect(asyncLock.availableSlots).toBe(2);
 
         asyncLock = new AsyncLock(2);
@@ -112,54 +90,49 @@ describe('AsyncLock', () => {
             callFor(asyncLock, asyncLock.waitPrioritized(1, 1), 60),
         ];
 
-        results = await checkPromises(promises);
-        expect(results).toEqual([symbol, symbol, symbol, symbol]);
+        await expect(promises).toPartiallyResolve([Pending, Pending, Pending, Pending]);
         expect(asyncLock.availableSlots).toBe(0);
 
-        await delay(40);
-        results = await checkPromises(promises);
-        expect(results).toEqual([true, symbol, symbol, symbol]);
+        await CT.sleep(40);
+        await expect(promises).toPartiallyResolve([true, Pending, Pending, Pending]);
         expect(asyncLock.availableSlots).toBe(1);
 
-        await delay(20);
-        results = await checkPromises(promises);
-        expect(results).toEqual([true, symbol, symbol, true]);
+        await CT.sleep(20);
+        await expect(promises).toPartiallyResolve([true, Pending, Pending, true]);
         expect(asyncLock.availableSlots).toBe(0);
 
-        await delay(40);
-        results = await checkPromises(promises);
-        expect(results).toEqual([true, true, symbol, true]);
+        await CT.sleep(40);
+        await expect(promises).toPartiallyResolve([true, true, Pending, true]);
         expect(asyncLock.availableSlots).toBe(1);
 
-        await delay(20);
-        results = await checkPromises(promises);
-        expect(results).toEqual([true, true, true, true]);
+        await CT.sleep(20);
+        await expect(promises).toPartiallyResolve([true, true, true, true]);
         expect(asyncLock.availableSlots).toBe(2);
 
         asyncLock = new AsyncLock(2);
         await expect(async () => asyncLock.wait(3)).rejects.toThrow();
 
         asyncLock.wait(1);
-        asyncLock.wait(2)
-        expect(() => asyncLock.totalSlots = 1).toThrow();
+        asyncLock.wait(2);
+        expect(() => (asyncLock.totalSlots = 1)).toThrow();
     });
 
     it('release using ticket', async () => {
         let asyncLock = new AsyncLock();
         let ticket = await asyncLock.waitOne();
         expect(asyncLock.availableSlots).toBe(0);
-        ticket.release()
+        ticket.release();
         expect(asyncLock.availableSlots).toBe(1);
     });
 
     it('int checks', async () => {
         let asyncLock;
-        
-        expect(() => new AsyncLock(3.5)).toThrow();
-        expect(() => asyncLock = new AsyncLock(1)).not.toThrow();
 
-        expect(() => asyncLock.totalSlots = 1.5).toThrow();
-        expect(() => asyncLock.totalSlots = 1).not.toThrow();
+        expect(() => new AsyncLock(3.5)).toThrow();
+        expect(() => (asyncLock = new AsyncLock(1))).not.toThrow();
+
+        expect(() => (asyncLock.totalSlots = 1.5)).toThrow();
+        expect(() => (asyncLock.totalSlots = 1)).not.toThrow();
 
         await expect(async () => asyncLock.waitPrioritized(1.5, 1.5)).rejects.toThrow();
         await expect(async () => asyncLock.waitPrioritized(1, 1.5)).resolves;
@@ -167,7 +140,6 @@ describe('AsyncLock', () => {
 
     it('locks with cancellation', async () => {
         let asyncLock = new AsyncLock(),
-            results,
             promises;
 
         let token1, token2;
@@ -177,37 +149,34 @@ describe('AsyncLock', () => {
 
         promises = [
             callFor(asyncLock, asyncLock.waitOne(), 100),
-            callFor(asyncLock, CT.catchCancelError(asyncLock.waitOne(token1)), 20),
-            callFor(asyncLock, CT.catchCancelError(asyncLock.waitOne(token2)), 60),
+            callFor(asyncLock, asyncLock.waitOne(token1), 20),
+            callFor(asyncLock, asyncLock.waitOne(token2), 60),
             callFor(asyncLock, asyncLock.waitOne(), 20),
         ];
 
-        results = await checkPromises(promises);
-        expect(results).toEqual([symbol, symbol, symbol, symbol]);
+        const sleep = [CT.sleep(45), CT.sleep(75), CT.sleep(105), CT.sleep(125)];
+
+        await expect(promises).toPartiallyResolve([Pending, Pending, Pending, Pending]);
         expect(asyncLock.availableSlots).toBe(0);
 
-        await delay(40);
-        results = await checkPromises(promises);
-        expect(results).toEqual([symbol, token1, symbol, symbol]);
+        await sleep[0];
+        await expect(promises).toPartiallyResolve([Pending, token1, Pending, Pending]);
         expect(asyncLock.availableSlots).toBe(0);
 
-        await delay(30);
-        results = await checkPromises(promises);
-        expect(results).toEqual([symbol, token1, token2, symbol]);
+        await sleep[1];
+        await expect(promises).toPartiallyResolve([Pending, token1, token2, Pending]);
         expect(asyncLock.availableSlots).toBe(0);
 
-        await delay(30);
-        results = await checkPromises(promises);
-        expect(results).toEqual([true, token1, token2, symbol]);
+        await sleep[2];
+        await expect(promises).toPartiallyResolve([true, token1, token2, Pending]);
         expect(asyncLock.availableSlots).toBe(0);
 
-        await delay(20);
-        results = await checkPromises(promises);
-        expect(results).toEqual([true, token1, token2, true]);
+        await sleep[3];
+        await expect(promises).toPartiallyResolve([true, token1, token2, true]);
         expect(asyncLock.availableSlots).toBe(1);
 
         callFor(asyncLock, asyncLock.waitOne(), 70);
-        await expect(async () => asyncLock.waitOne(CT.timeout(20))).rejects.toThrow();
-        await expect(async () => asyncLock.waitPrioritized(1, 0, CT.timeout(20))).rejects.toThrow();
+        await expect(async () => asyncLock.waitOne(CT.timeout(20))).rejects.toMatchError('Async call cancelled');
+        await expect(async () => asyncLock.waitPrioritized(1, 0, CT.timeout(20))).rejects.toMatchError('Async call cancelled');
     });
 });

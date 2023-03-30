@@ -1,9 +1,13 @@
 const config = {
   setupFilesAfterEnv: [
-    "./test/jestCustom.js"
+    "./test/lib/matchers.js",
+    "./test/lib/misc.js",
   ],
   verbose: false,
   testRegex: '/test/\\w+\.test\.js$',
+  testEnvironmentOptions: {
+    esModules: true,
+  },
 };
 
 export default config;

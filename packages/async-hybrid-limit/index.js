@@ -355,4 +355,4 @@ class AsyncHybridLimit {
 }
 
 export default AsyncHybridLimit;
-export { AsyncHybridLimitTicket };
+export { AsyncHybridLimit, AsyncHybridLimitTicket };
