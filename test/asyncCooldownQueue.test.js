@@ -162,6 +162,8 @@ describe('AsyncCooldownQueue', () => {
             asyncCooldownQueue.wait(),
         ]);
 
+        //console.log(times.map(time => time - start));
+
         expect(results).toEqual(expectedResults);
         expect(times).toMatchTimeline(start, expectedTimes);
     });

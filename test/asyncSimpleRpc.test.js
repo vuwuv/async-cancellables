@@ -21,13 +21,18 @@ const asyncHybridLimit = new AsyncHybridLimit();
 const asyncCooldownQueue = new AsyncCooldownQueue(100);
 
 let addCalls = 0;
+let waitCalls = 0;
 
-class InvalidResource { }
+class InvalidResource {}
+
+class ErrorResource {
+    release() {
+        throw new Error('ErrorResource release error');
+    }
+}
 
 class ValidResource {
-    release() {
-
-    }
+    release() {}
 }
 
 class ParametrizedResource {
@@ -35,9 +40,7 @@ class ParametrizedResource {
         this.arg = arg;
     }
 
-    release() {
-
-    }
+    release() {}
 }
 
 const methods = {
@@ -53,6 +56,16 @@ const methods = {
         await CT.sleep(time, true, ct);
         addCalls++;
         return a + b;
+    },
+
+    async wait(ct, time = 50) {
+        try {
+            waitCalls++;
+            return await CT.sleep(time, true, ct);
+        }
+        finally {
+            waitCalls--;
+        }
     },
 
     async lock(ct, slots) {
@@ -77,8 +90,12 @@ const methods = {
         throw new Error(error);
     },
 
-    async resource() {
+    async invalidResource() {
         return new InvalidResource();
+    },
+
+    async errorResource() {
+        return new ErrorResource();
     },
 
     instantResource() {
@@ -98,14 +115,22 @@ const testMethods = {
 
     async testResource(ct, arg) {
         return new ParametrizedResource(arg);
-    }
+    },
 };
 
 const httpServer = createServer();
 const ioServer = new Server(httpServer);
-let asyncRpcServer = AsyncRpcServer.socketio(ioServer.of(namespace), methods, { resourceClasses: [AsyncLockTicket, 'release', InvalidResource, 'release', ValidResource, 'release'] });
-const clientSocket = Client(url);
-const testClientSocket = Client(testUrl);
+let asyncRpcServer = AsyncRpcServer.socketio(ioServer.of(namespace), methods, {
+    resourceClasses: [AsyncLockTicket, 'release', InvalidResource, 'release', ValidResource, 'release', ErrorResource, 'release'],
+});
+
+const clientSockets = []
+
+function createAsyncRpcClient(url, methods, options) {
+    const clientSocket = Client(url);
+    clientSockets.push(clientSocket);
+    return AsyncRpcClient.socketio(clientSocket, Array.isArray(methods) ? methods : Object.keys(methods), options);
+}
 
 async function reconnect(asyncRpcClient) {
     try {
@@ -113,14 +138,13 @@ async function reconnect(asyncRpcClient) {
         await asyncRpcClient.waitDisconnected();
         asyncRpcClient.connect();
         await asyncRpcClient.waitConnected();
-    }
-    catch (error) {
+    } catch (error) {
         consoleLog(error);
     }
 }
 
 async function stressTest() {
-    const asyncRpcClient = AsyncRpcClient.socketio(clientSocket, Object.keys(methods));
+    const asyncRpcClient = createAsyncRpcClient(url, methods);
     await asyncRpcClient.waitConnected();
 
     for (let i = 0; i < 1000; i++) {
@@ -137,12 +161,12 @@ async function stressTest() {
 
     for (let i = 0; i < 1000; i++) {
         const ticket = await asyncRpcClient.lock(CT.manual(), 1);
-        await ticket.waitRelease()
+        await ticket.waitRelease();
     }
 }
 
 async function disconnectTest() {
-    const asyncRpcClient = AsyncRpcClient.socketio(clientSocket, Object.keys(methods));
+    const asyncRpcClient = createAsyncRpcClient(url, methods);
     await asyncRpcClient.waitConnected();
 
     const interval = setInterval(reconnect.bind(null, asyncRpcClient), 300);
@@ -154,8 +178,7 @@ async function disconnectTest() {
     for (let i = 0; i < total; i++) {
         try {
             expect(await asyncRpcClient.waitAdd(token, 1, 2, 10)).toBe(3);
-        }
-        catch (error) {
+        } catch (error) {
             await CT.sleep(10);
             expect(error.message).toBe('Async call cancelled (connection closed)');
             rejectCount++;
@@ -168,11 +191,10 @@ async function disconnectTest() {
         //expect(EventProxy.count).toBeLessThan(300);
     }
 
-    consoleLog(`rejectCount: ${(rejectCount / total * 100).toFixed(2)}%} (${rejectCount}/${total}))`);
+    consoleLog(`rejectCount: ${((rejectCount / total) * 100).toFixed(2)}%} (${rejectCount}/${total}))`);
 
     clearInterval(interval);
 }
-
 
 beforeAll(async () => {
     httpServer.listen(portNumber);
@@ -191,17 +213,18 @@ describe('AsyncSimpleRpc', () => {
         it('disconnect test', async () => {
             await disconnectTest();
         });
-    }
-    else {
+    } else {
         it('init', async () => {
             let testAsyncRpcServer = AsyncRpcServer.socketio(ioServer.of(testNamespace), testMethods);
-            expect(() => testAsyncRpcServer = AsyncRpcServer.socketio(ioServer.of(testNamespace), testMethods)).toThrow('socket.io server already used for RPC');
+            expect(() => (testAsyncRpcServer = AsyncRpcServer.socketio(ioServer.of(testNamespace), testMethods))).toThrow(
+                'socket.io server already used for RPC'
+            );
             testAsyncRpcServer.destroy();
-            expect(() => testAsyncRpcServer = AsyncRpcServer.socketio(ioServer.of(testNamespace), testMethods)).not.toThrow();
+            expect(() => (testAsyncRpcServer = AsyncRpcServer.socketio(ioServer.of(testNamespace), testMethods))).not.toThrow();
             testAsyncRpcServer.destroy();
 
             testAsyncRpcServer = AsyncRpcServer.socketio(ioServer.of(testNamespace), testMethods, { resourceClasses: [ParametrizedResource, 'release'] });
-            const testAsyncRpcClient = AsyncRpcClient.socketio(testClientSocket, Object.keys(testMethods));
+            const testAsyncRpcClient = createAsyncRpcClient(testUrl, testMethods);
             await testAsyncRpcClient.waitConnected();
 
             let result = await testAsyncRpcClient.testResource(CT.manual(), 1);
@@ -215,18 +238,20 @@ describe('AsyncSimpleRpc', () => {
             expect(result).toBeInstanceOf(Object);
 
             testAsyncRpcServer.destroy();
-            testAsyncRpcServer = AsyncRpcServer.socketio(ioServer.of(testNamespace), testMethods, { resourceClasses: new Map([[ParametrizedResource, 'release']]) });
+            testAsyncRpcServer = AsyncRpcServer.socketio(ioServer.of(testNamespace), testMethods, {
+                resourceClasses: new Map([[ParametrizedResource, 'release']]),
+            });
             await testAsyncRpcClient.waitConnected();
 
             result = await testAsyncRpcClient.testResource(CT.manual(), 1);
             expect(result).toBeInstanceOf(AsyncRpcRemoteResource);
 
             testAsyncRpcServer.destroy();
-            expect(() => testAsyncRpcServer = AsyncRpcServer.socketio(ioServer.of(testNamespace), testMethods, { resourceClasses: true })).toThrow();
+            expect(() => (testAsyncRpcServer = AsyncRpcServer.socketio(ioServer.of(testNamespace), testMethods, { resourceClasses: true }))).toThrow();
         });
 
         it('basics and cancels', async () => {
-            const asyncRpcClient = AsyncRpcClient.socketio(clientSocket, Object.keys(methods));
+            const asyncRpcClient = createAsyncRpcClient(url, methods);
             await asyncRpcClient.waitConnected();
             await asyncRpcClient.waitConnected();
 
@@ -272,20 +297,48 @@ describe('AsyncSimpleRpc', () => {
         });
 
         it('errors', async () => {
-            const asyncRpcClient = AsyncRpcClient.socketio(clientSocket, Object.keys(methods));
+            const asyncRpcClient = createAsyncRpcClient(url, methods);
             await asyncRpcClient.waitConnected();
 
             expect(() => asyncRpcClient.sub()).toThrow();
             await expect(asyncRpcClient.throw(CT.manual(), 'test error')).rejects.toMatchError('test error');
             await expect(asyncRpcClient.waitThrow(CT.manual(), 'test error')).rejects.toMatchError('test error');
             await expect(asyncRpcClient.waitThrow(CT.timeout(25), 'test error', 50)).rejects.toMatchError('Async call cancelled');
-            await expect(asyncRpcClient.resource()).rejects.toMatchError('Internal error: invalid resource');
-            expect("Resource class").toHaveBeenWarned();
-            expect("Resource class").toHaveBeenWarnedTimes(1);
+            await expect(asyncRpcClient.invalidResource()).rejects.toMatchError('Internal error: invalid resource');
+            expect('Resource class').toHaveBeenWarned();
+            expect('Resource class').toHaveBeenWarnedTimes(1);
+            const errorResource = await asyncRpcClient.errorResource();
+            await errorResource.waitRelease();
+            expect('Error releasing resource').toHaveBeenWarned();
+            expect('Error releasing resource').toHaveBeenWarnedTimes(1);
+            await asyncRpcClient.errorResource();
+            asyncRpcClient.disconnect();
+            await asyncRpcClient.waitDisconnected();
+            await CT.sleep(2);
+            expect('Error releasing resource').toHaveBeenWarnedTimes(2);
+        });
+
+        it('cancel on disconnect', async () => {
+            const asyncRpcClient = createAsyncRpcClient(url, methods);
+            await asyncRpcClient.waitConnected();
+
+            const promises = [];
+            for (let i = 0; i < 10; i++) {
+                promises.push(asyncRpcClient.wait(null, 100));
+            }
+            Promise.allSettled(promises).then(value => value);
+            await CT.sleep(20);
+
+            expect(waitCalls).toBe(10);
+
+            await reconnect(asyncRpcClient);
+            await CT.sleep(5);
+
+            expect(waitCalls).toBe(0);
         });
 
         it('disconnect', async () => {
-            const asyncRpcClient = AsyncRpcClient.socketio(clientSocket, Object.keys(methods));
+            const asyncRpcClient = createAsyncRpcClient(url, methods);
             await asyncRpcClient.waitConnected();
 
             expect(asyncRpcClient.connected).toBe(true);
@@ -299,37 +352,37 @@ describe('AsyncSimpleRpc', () => {
             await expect(asyncRpcClient.waitConnected(CT.timeout(1))).rejects.toMatchError('Async call cancelled');
 
             await asyncRpcClient.waitConnected();
-            CT.sleep(10).then(() => reconnect(asyncRpcClient)).catch((error) => console.log('reconnect:' + error));
+            CT.sleep(10)
+                .then(() => reconnect(asyncRpcClient))
+                .catch((error) => console.log('reconnect:' + error));
             try {
                 await asyncRpcClient.waitAdd(null, 1, 2, 100);
-            }
-            catch (error) {
+            } catch (error) {
                 expect(error).toMatchError('Async call cancelled (connection closed)');
                 expect(error.marker).toBe(AsyncRpcClientMarkers.ConnectionClosed);
             }
         });
 
         it('request timeout', async () => {
-            const asyncRpcClient = AsyncRpcClient.socketio(clientSocket, Object.keys(methods), { requestTimeout: 200 });
+            const asyncRpcClient = createAsyncRpcClient(url, methods, { requestTimeout: 200 });
             await asyncRpcClient.waitConnected();
             await expect(asyncRpcClient.waitAdd(null, 1, 2, 100)).resolves.toBe(3);
         });
 
         it('request timeout small', async () => {
-            const asyncRpcClient = AsyncRpcClient.socketio(clientSocket, Object.keys(methods), { requestTimeout: 2 });
+            const asyncRpcClient = createAsyncRpcClient(url, methods, { requestTimeout: 2 });
             await asyncRpcClient.waitConnected();
 
             try {
                 await asyncRpcClient.waitAdd(null, 1, 2, 100);
-            }
-            catch (error) {
+            } catch (error) {
                 expect(error).toMatchError('Async call cancelled (request timeout)');
                 expect(error.marker).toBe(AsyncRpcClientMarkers.RequestTimeout);
             }
         });
 
         it('events', async () => {
-            const asyncRpcClient = AsyncRpcClient.socketio(clientSocket, Object.keys(methods));
+            const asyncRpcClient = createAsyncRpcClient(url, methods);
             await asyncRpcClient.waitConnected();
 
             let openCount = 0;
@@ -351,10 +404,6 @@ describe('AsyncSimpleRpc', () => {
 });
 
 afterAll((done) => {
-    testClientSocket.close();
-    clientSocket.close();
+    clientSockets.forEach((socket) => socket.close());
     httpServer.close(done);
 });
-
-
-

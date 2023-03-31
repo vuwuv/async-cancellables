@@ -71,15 +71,21 @@ class AsyncRpcServer {
         const resource = resources.get(id);
         if (resource) {
             const releaseMethodName = this.#resourceClasses.get(resource.constructor);
-            resource[releaseMethodName]();
+            try {
+                resource[releaseMethodName]();
+            }
+            catch (error) {
+                console.warn(`Error releasing resource ${resource.constructor.name}.${releaseMethodName}: ${error.message}`);
+            }
         }
         else if (shouldConfirm) connection.send(`confirmRelease_${id}`, false, 'Resource not found');
         if (shouldConfirm) connection.send(`confirmRelease_${id}`, true);
+        resources.delete(id);
     }
 
     // process new call request
     #onCall(connection, connectionToken, resources, id, methodName, methodArgs) {
-        const callToken = CT.manual(connectionToken);
+        const callToken = CT.manual().attachTo(connectionToken);
         const method = this.#methods[methodName];
 
         if (!method) {
@@ -118,7 +124,12 @@ class AsyncRpcServer {
         connectionToken.cancel();
         for (let resource of resources.values()) {
             const releaseMethodName = this.#resourceClasses.get(resource.constructor);
-            resource[releaseMethodName]();
+            try {
+                resource[releaseMethodName]();
+            }
+            catch (error) {
+                console.warn(`Error releasing resource ${resource.constructor.name}.${releaseMethodName}: ${error.message}`);
+            }
         }
     }
 
@@ -140,8 +151,10 @@ class AsyncRpcServer {
                     connection.send(`result_${id}`, 'error', `Internal error: invalid resource`);
                     console.warn(`Resource class ${result.constructor.name} should have a method named ${releaseMethodName} to release the resource`);
                 }
-                resources.set(id, result);
-                connection.send(`result_${id}`, 'resource');
+                else {
+                    resources.set(id, result);
+                    connection.send(`result_${id}`, 'resource');
+                }
             }
         }
         

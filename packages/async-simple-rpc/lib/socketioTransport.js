@@ -47,7 +47,7 @@ class SocketioServerConnection extends EventEmitter {
         super();
         this.#socket = socket;
         this.#socket.on('message', this.#onMessage.bind(this));
-        this.#socket.on('close', this.#onClose.bind(this));
+        this.#socket.on('disconnect', this.#onClose.bind(this));
     }
 
     #onClose() {
