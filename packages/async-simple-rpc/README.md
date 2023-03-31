@@ -15,6 +15,8 @@
     -   [Releasing remote resources](#releasing-remote-resources)
     -   [Misc client methods and properties](#misc-client-methods-and-properties)
     -   [Misc server methods and properties](#misc-server-methods-and-properties)
+    -   [Events](#events)
+    -   [Client error markers](#client-error-markers)
 -   [Authors](#authors)
 -   [License](#license)
 
@@ -139,6 +141,11 @@ await remoteResource.waitRelease(CT.manual()); // wait for remote lock release
 ### Misc server methods and properties
 
 - `destroy()` stop accepting new connections
+
+### Events
+
+- `connect` - emitted when the connection is established
+- `disconnect` - emitted when the connection is closed
 
 ### Client error markers
 

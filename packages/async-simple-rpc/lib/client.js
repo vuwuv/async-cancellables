@@ -1,4 +1,5 @@
 import { CT } from 'async-cancellables';
+import EventEmitter from 'node:events';
 
 import { SocketioClientTransport } from './socketioTransport.js';
 
@@ -29,7 +30,7 @@ const AsyncRpcClientMarkers = Object.freeze({
     RequestTimeout: requestTimeoutSymbol
 });
 
-class AsyncRpcClient {
+class AsyncRpcClient extends EventEmitter {
     #transport;
     #connectionToken;
     #nextId = 0;
@@ -42,6 +43,8 @@ class AsyncRpcClient {
     }
 
     constructor(transport, methods, options) {
+        super();
+
         this.#transport = transport;
 
         if (options) {
@@ -85,11 +88,13 @@ class AsyncRpcClient {
     }
     
     #onConnected() {
+        if (!this.#connected) this.emit('open');
         this.#connected = true;
         this.#connectionToken = CT.event(this.#transport, 'close', connectionClosedSymbol);
     }
 
     #onDisconnected() {
+        if (this.#connected) this.emit('close');
         this.#connected = false;
     }
 
@@ -160,4 +165,4 @@ class AsyncRpcClient {
 }
 
 export default AsyncRpcClient;
-export { AsyncRpcRemoteResource, AsyncRpcClient, AsyncRpcClientMarkers }
+export { AsyncRpcRemoteResource, AsyncRpcClientMarkers }

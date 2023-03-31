@@ -312,7 +312,6 @@ describe('AsyncSimpleRpc', () => {
         it('request timeout', async () => {
             const asyncRpcClient = AsyncRpcClient.socketio(clientSocket, Object.keys(methods), { requestTimeout: 200 });
             await asyncRpcClient.waitConnected();
-
             await expect(asyncRpcClient.waitAdd(null, 1, 2, 100)).resolves.toBe(3);
         });
 
@@ -327,6 +326,26 @@ describe('AsyncSimpleRpc', () => {
                 expect(error).toMatchError('Async call cancelled (request timeout)');
                 expect(error.marker).toBe(AsyncRpcClientMarkers.RequestTimeout);
             }
+        });
+
+        it('events', async () => {
+            const asyncRpcClient = AsyncRpcClient.socketio(clientSocket, Object.keys(methods));
+            await asyncRpcClient.waitConnected();
+
+            let openCount = 0;
+            let closeCount = 0;
+
+            asyncRpcClient.on('open', () => openCount++);
+            asyncRpcClient.on('close', () => closeCount++);
+
+            await reconnect(asyncRpcClient);
+            await reconnect(asyncRpcClient);
+
+            asyncRpcClient.removeAllListeners('open');
+            asyncRpcClient.removeAllListeners('close');
+
+            expect(openCount).toBe(2);
+            expect(closeCount).toBe(2);
         });
     }
 });

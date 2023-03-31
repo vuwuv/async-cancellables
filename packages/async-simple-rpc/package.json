@@ -1,6 +1,6 @@
 {
     "name": "@async-cancellables/async-simple-rpc",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "description": "Asynchronous RPC with cancellation support",
     "main": "index.js",
     "type": "module",
