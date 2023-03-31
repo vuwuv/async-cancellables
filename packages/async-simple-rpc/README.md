@@ -144,8 +144,8 @@ await remoteResource.waitRelease(CT.manual()); // wait for remote lock release
 
 ### Events
 
-- `connect` - emitted when the connection is established
-- `disconnect` - emitted when the connection is closed
+- `open` - emitted when the connection is established
+- `close` - emitted when the connection is closed
 
 ### Client error markers
 
